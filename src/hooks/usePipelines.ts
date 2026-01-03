@@ -22,6 +22,7 @@ export function usePipelines() {
     mutationFn: async (pipeline: { name: string; chatwoot_inbox_id: string }) => {
       const { error } = await supabase
         .from('crm_pipelines')
+        // @ts-expect-error - Supabase type inference issue
         .insert(pipeline)
 
       if (error) throw error
@@ -35,6 +36,7 @@ export function usePipelines() {
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<Pipeline> }) => {
       const { error } = await supabase
         .from('crm_pipelines')
+        // @ts-expect-error - Supabase type inference issue with Partial
         .update(updates)
         .eq('id', id)
 
@@ -47,24 +49,19 @@ export function usePipelines() {
 
   const deletePipelineMutation = useMutation({
     mutationFn: async (id: string) => {
-      console.log('usePipelines: Deleting pipeline with id:', id)
       const { error } = await supabase
         .from('crm_pipelines')
         .delete()
         .eq('id', id)
 
       if (error) {
-        console.error('usePipelines: Delete error:', error)
         throw error
       }
-      console.log('usePipelines: Delete successful')
     },
     onSuccess: () => {
-      console.log('usePipelines: onSuccess callback triggered')
       queryClient.invalidateQueries({ queryKey: ['all-pipelines'] })
     },
     onError: (error) => {
-      console.error('usePipelines: onError callback triggered:', error)
       alert(`Erro ao deletar pipeline: ${error.message}`)
     },
   })

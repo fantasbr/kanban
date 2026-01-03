@@ -1,4 +1,4 @@
-# Vibe CRM - Guia de Configuração
+# Branca SGI - Guia de Configuração
 
 ## 📦 Migrações SQL Pendentes
 

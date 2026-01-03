@@ -1,0 +1,280 @@
+      {/* Edit Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+          <form onSubmit={handleSubmit}>
+            <DialogHeader>
+              <DialogTitle>Editar Cliente</DialogTitle>
+              <DialogDescription>
+                Atualize os dados do cliente
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-6 py-4">
+              {/* Dados Pessoais Básicos */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-sm text-slate-700 border-b pb-2">
+                  Dados Pessoais
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2 space-y-2">
+                    <Label htmlFor="full_name">Nome Completo *</Label>
+                    <Input
+                      id="full_name"
+                      required
+                      value={formData.full_name}
+                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cpf">CPF *</Label>
+                    <Input
+                      id="cpf"
+                      required
+                      placeholder="000.000.000-00"
+                      value={formData.cpf}
+                      onChange={(e) => {
+                        setFormData({ ...formData, cpf: e.target.value })
+                        setCpfError('')
+                      }}
+                      className={cpfError ? 'border-red-500' : ''}
+                    />
+                    {cpfError && (
+                      <p className="text-xs text-red-600">{cpfError}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="birth_date">Data de Nascimento</Label>
+                    <Input
+                      id="birth_date"
+                      type="date"
+                      value={formData.birth_date}
+                      onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {/* RG */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="rg_number">RG</Label>
+                    <Input
+                      id="rg_number"
+                      value={formData.rg_number}
+                      onChange={(e) => setFormData({ ...formData, rg_number: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="rg_issuer_state">UF Emissor</Label>
+                    <Input
+                      id="rg_issuer_state"
+                      maxLength={2}
+                      placeholder="SP"
+                      value={formData.rg_issuer_state}
+                      onChange={(e) => setFormData({ ...formData, rg_issuer_state: e.target.value.toUpperCase() })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="rg_issue_date">Data Emissão</Label>
+                    <Input
+                      id="rg_issue_date"
+                      type="date"
+                      value={formData.rg_issue_date}
+                      onChange={(e) => setFormData({ ...formData, rg_issue_date: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {/* Gênero */}
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Gênero</Label>
+                  <Select
+                    value={formData.gender}
+                    onValueChange={(value: 'M' | 'F' | 'Outro') => setFormData({ ...formData, gender: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="M">Masculino</SelectItem>
+                      <SelectItem value="F">Feminino</SelectItem>
+                      <SelectItem value="Outro">Outro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Filiação */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="father_name">Nome do Pai</Label>
+                    <Input
+                      id="father_name"
+                      value={formData.father_name}
+                      onChange={(e) => setFormData({ ...formData, father_name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="mother_name">Nome da Mãe</Label>
+                    <Input
+                      id="mother_name"
+                      value={formData.mother_name}
+                      onChange={(e) => setFormData({ ...formData, mother_name: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {/* Naturalidade */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="birth_city">Cidade Natal</Label>
+                    <Input
+                      id="birth_city"
+                      value={formData.birth_city}
+                      onChange={(e) => setFormData({ ...formData, birth_city: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="birth_state">Estado</Label>
+                    <Input
+                      id="birth_state"
+                      maxLength={2}
+                      placeholder="SP"
+                      value={formData.birth_state}
+                      onChange={(e) => setFormData({ ...formData, birth_state: e.target.value.toUpperCase() })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="birth_country">País</Label>
+                    <Input
+                      id="birth_country"
+                      value={formData.birth_country}
+                      onChange={(e) => setFormData({ ...formData, birth_country: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Endereço */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-sm text-slate-700 border-b pb-2">
+                  Endereço
+                </h3>
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="col-span-3 space-y-2">
+                    <Label htmlFor="address">Logradouro</Label>
+                    <Input
+                      id="address"
+                      placeholder="Rua, Avenida..."
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="address_number">Número</Label>
+                    <Input
+                      id="address_number"
+                      value={formData.address_number}
+                      onChange={(e) => setFormData({ ...formData, address_number: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="address_complement">Complemento</Label>
+                    <Input
+                      id="address_complement"
+                      value={formData.address_complement}
+                      onChange={(e) => setFormData({ ...formData, address_complement: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="neighborhood">Bairro</Label>
+                    <Input
+                      id="neighborhood"
+                      value={formData.neighborhood}
+                      onChange={(e) => setFormData({ ...formData, neighborhood: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="city">Cidade</Label>
+                    <Input
+                      id="city"
+                      value={formData.city}
+                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="state">UF</Label>
+                    <Input
+                      id="state"
+                      maxLength={2}
+                      placeholder="SP"
+                      value={formData.state}
+                      onChange={(e) => setFormData({ ...formData, state: e.target.value.toUpperCase() })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="zip_code">CEP</Label>
+                    <Input
+                      id="zip_code"
+                      placeholder="00000-000"
+                      value={formData.zip_code}
+                      onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* CNH (Autoescola) */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-sm text-slate-700 border-b pb-2">
+                  CNH (Autoescola)
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="cnh_number">Número da CNH</Label>
+                    <Input
+                      id="cnh_number"
+                      value={formData.cnh_number}
+                      onChange={(e) => setFormData({ ...formData, cnh_number: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cnh_expiration_date">Data de Vencimento</Label>
+                    <Input
+                      id="cnh_expiration_date"
+                      type="date"
+                      value={formData.cnh_expiration_date}
+                      onChange={(e) => setFormData({ ...formData, cnh_expiration_date: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Observações */}
+              <div className="space-y-2">
+                <Label htmlFor="notes">Observações</Label>
+                <Input
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Anotações adicionais..."
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isUpdating}>
+                {isUpdating ? 'Atualizando...' : 'Atualizar Cliente'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

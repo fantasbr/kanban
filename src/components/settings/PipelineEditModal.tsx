@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -188,11 +188,11 @@ export function PipelineEditModal({ pipeline, open, onClose, onSave }: PipelineE
           <DialogTitle className="text-2xl font-bold text-slate-900">
             {pipeline ? 'Editar Pipeline' : 'Novo Pipeline'}
           </DialogTitle>
-          <p className="text-sm text-slate-500 mt-1">
+          <DialogDescription className="text-sm text-slate-500 mt-1">
             {pipeline
               ? 'Atualize as informações do pipeline e gerencie suas etapas'
               : 'Crie um novo pipeline de vendas'}
-          </p>
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-6">

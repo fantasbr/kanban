@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,7 +20,8 @@ import type { Priority, Stage, Contact } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
 import { useDealTitles } from '@/hooks/useDealTitles'
 import { useContacts } from '@/hooks/useContacts'
-import { Search, X } from 'lucide-react'
+import { ContactCreateModal } from '@/components/contacts/ContactCreateModal'
+import { Search, X, UserPlus } from 'lucide-react'
 
 interface DealCreateModalProps {
   pipelineId: string
@@ -50,21 +52,28 @@ export function DealCreateModal({
   onCreate,
 }: DealCreateModalProps) {
   const { data: dealTitles, isLoading: isLoadingTitles } = useDealTitles()
-  const { contacts, searchQuery, setSearchQuery } = useContacts()
+  const { contacts, searchQuery, setSearchQuery, createContact } = useContacts()
   const [title, setTitle] = useState('')
   const [dealValue, setDealValue] = useState('')
   const [priority, setPriority] = useState<Priority>('medium')
   const [stageId, setStageId] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
   const [showContactDropdown, setShowContactDropdown] = useState(false)
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false)
 
-  // Set default stage when stages load or modal opens
+  // Calculate default stage
+  const defaultStageId = useMemo(() => {
+    if (stages.length === 0) return ''
+    const defaultStage = stages.find((s) => s.is_default) || stages[0]
+    return defaultStage.id
+  }, [stages])
+
+  // Set default stage when modal opens
   useEffect(() => {
-    if (open && stages.length > 0 && !stageId) {
-      const defaultStage = stages.find((s) => s.is_default) || stages[0]
-      setStageId(defaultStage.id)
+    if (open && !stageId && defaultStageId) {
+      setStageId(defaultStageId)
     }
-  }, [open, stages, stageId])
+  }, [open, defaultStageId])
 
   // Handle title change and update deal value
   const handleTitleChange = (newTitle: string) => {
@@ -107,9 +116,9 @@ export function DealCreateModal({
           <DialogTitle className="text-2xl font-bold text-slate-900">
             Novo Negócio
           </DialogTitle>
-          <p className="text-sm text-slate-500 mt-1">
+          <DialogDescription className="text-sm text-slate-500 mt-1">
             Cadastre um novo negócio no pipeline
-          </p>
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-6">
@@ -293,6 +302,20 @@ export function DealCreateModal({
                 )}
               </div>
             )}
+            
+            {/* Create New Contact Button */}
+            {!selectedContact && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsContactModalOpen(true)}
+                className="w-full mt-2 border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 hover:border-blue-400"
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Criar Novo Contato
+              </Button>
+            )}
           </div>
         </div>
 
@@ -310,6 +333,22 @@ export function DealCreateModal({
           </Button>
         </div>
       </DialogContent>
+
+      {/* Contact Creation Modal */}
+      <ContactCreateModal
+        open={isContactModalOpen}
+        onClose={() => setIsContactModalOpen(false)}
+        onCreate={createContact}
+        mode="balcao"
+        onSuccess={(contactId) => {
+          // Find the newly created contact and select it
+          const newContact = contacts.find(c => c.id === contactId)
+          if (newContact) {
+            setSelectedContact(newContact)
+          }
+          setIsContactModalOpen(false)
+        }}
+      />
     </Dialog>
   )
 }

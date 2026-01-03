@@ -16,12 +16,14 @@ export function ContactEditModal({ contact, open, onClose, onSave }: ContactEdit
   const [name, setName] = useState(contact?.name || '')
   const [phone, setPhone] = useState(contact?.phone || '')
   const [email, setEmail] = useState(contact?.email || '')
+  const [chatwootId, setChatwootId] = useState(contact?.chatwoot_id?.toString() || '')
 
   // Update state when contact changes
   if (contact && contact.name !== name && !name) {
     setName(contact.name)
     setPhone(contact.phone || '')
     setEmail(contact.email || '')
+    setChatwootId(contact.chatwoot_id?.toString() || '')
   }
 
   const handleSave = () => {
@@ -31,6 +33,7 @@ export function ContactEditModal({ contact, open, onClose, onSave }: ContactEdit
       name,
       phone: phone || null,
       email: email || null,
+      chatwoot_id: chatwootId ? parseInt(chatwootId) : contact.chatwoot_id,
     })
     onClose()
   }
@@ -50,7 +53,7 @@ export function ContactEditModal({ contact, open, onClose, onSave }: ContactEdit
         </DialogHeader>
 
         <div className="space-y-6 py-6">
-          {/* Avatar Section */}
+          {/* Avatar and ID Section */}
           <div className="flex flex-col items-center gap-3 pb-4 border-b border-slate-100">
             {contact.profile_url ? (
               <img
@@ -63,14 +66,29 @@ export function ContactEditModal({ contact, open, onClose, onSave }: ContactEdit
                 {contact.name.charAt(0).toUpperCase()}
               </div>
             )}
-            <div className="text-center">
-              <p className="text-sm font-medium text-slate-500">Chatwoot ID</p>
-              <p className="text-lg font-bold text-slate-900">#{contact.chatwoot_id}</p>
-            </div>
           </div>
 
           {/* Form Fields */}
           <div className="space-y-4">
+            {/* Chatwoot ID */}
+            <div className="space-y-2">
+              <Label htmlFor="chatwoot-id" className="text-sm font-semibold text-slate-700">
+                Chatwoot ID <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="chatwoot-id"
+                type="number"
+                value={chatwootId}
+                onChange={(e) => setChatwootId(e.target.value)}
+                placeholder="Digite o ID do Chatwoot"
+                required
+                className="h-11 border-slate-300 focus:border-blue-500 focus:ring-blue-500"
+              />
+              <p className="text-xs text-slate-500">
+                ID único do contato no Chatwoot. Use valores negativos para contatos de balcão.
+              </p>
+            </div>
+
             {/* Name */}
             <div className="space-y-2">
               <Label htmlFor="name" className="text-sm font-semibold text-slate-700">
@@ -125,7 +143,7 @@ export function ContactEditModal({ contact, open, onClose, onSave }: ContactEdit
           </Button>
           <Button 
             onClick={handleSave} 
-            disabled={!name.trim()}
+            disabled={!name.trim() || !chatwootId.trim()}
             className="px-6 bg-blue-600 hover:bg-blue-700"
           >
             Salvar Alterações

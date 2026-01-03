@@ -1,0 +1,1078 @@
+openapi: 3.0.3
+info:
+  title: Kanban CRM/ERP API
+  version: 1.0.0
+  description: |
+    API REST para integração com sistema Kanban (CRM + ERP).
+
+    ## Autenticação
+
+    Todas as requisições devem incluir uma API Key no header `Authorization`:
+    ```
+    Authorization: Bearer sk_live_your_api_key_here
+    ```
+
+    ## Permissões
+
+    As API Keys podem ter as seguintes permissões:
+    - `crm:read` - Leitura de dados CRM (deals, contacts, pipelines)
+    - `crm:write` - Escrita de dados CRM
+    - `erp:read` - Leitura de dados ERP (clients, contracts, receivables)
+    - `erp:write` - Escrita de dados ERP
+    - `*` - Acesso total (wildcard)
+
+    ## Rate Limiting
+
+    Atualmente não há rate limiting implementado.
+
+    ## Webhooks
+
+    O sistema suporta webhooks para os seguintes eventos:
+    - `deal.created` - Disparado quando um deal é criado
+    - `contract.signed` - Disparado quando um contrato é assinado (status = active)
+    - `payment.received` - Disparado quando um pagamento é recebido (receivable status = paid)
+
+    Webhooks incluem assinatura HMAC-SHA256 no header `X-Webhook-Signature`.
+
+  contact:
+    name: API Support
+    email: support@example.com
+
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://your-project.supabase.co/functions/v1
+    description: Production (Supabase Cloud)
+  - url: http://localhost:54321/functions/v1
+    description: Local Development
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: CRM - Deals
+    description: Gerenciamento de negociações (deals)
+  - name: CRM - Contacts
+    description: Gerenciamento de contatos
+  - name: CRM - Pipelines
+    description: Gerenciamento de funis de vendas
+  - name: ERP - Clients
+    description: Gerenciamento de clientes
+  - name: ERP - Contracts
+    description: Gerenciamento de contratos
+  - name: ERP - Receivables
+    description: Gerenciamento de contas a receber
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: |
+        API Key gerada no sistema. Formato: `sk_live_...`
+
+        Exemplo:
+        ```
+        Authorization: Bearer sk_live_0123456789abcdef...
+        ```
+
+  schemas:
+    # ============================================
+    # CRM SCHEMAS
+    # ============================================
+
+    Deal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        pipeline_id:
+          type: string
+          format: uuid
+          example: "660e8400-e29b-41d4-a716-446655440000"
+        stage_id:
+          type: string
+          format: uuid
+          example: "770e8400-e29b-41d4-a716-446655440000"
+        contact_id:
+          type: integer
+          nullable: true
+          example: 123
+        title:
+          type: string
+          example: "Venda de Notebook Dell"
+        deal_value_negotiated:
+          type: number
+          format: float
+          example: 5000.00
+        priority:
+          type: string
+          enum: [low, medium, high]
+          example: "high"
+        chatwoot_conversation_id:
+          type: string
+          nullable: true
+          example: "12345"
+        ai_summary:
+          type: string
+          nullable: true
+        needs_contract:
+          type: boolean
+          example: true
+        existing_client_id:
+          type: integer
+          nullable: true
+        is_archived:
+          type: boolean
+          example: false
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+        archived_reason:
+          type: string
+          nullable: true
+        contract_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-12-23T14:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-12-23T15:00:00Z"
+        contacts:
+          $ref: "#/components/schemas/Contact"
+        crm_stages:
+          $ref: "#/components/schemas/Stage"
+
+    DealCreate:
+      type: object
+      required:
+        - pipeline_id
+        - stage_id
+        - title
+        - deal_value_negotiated
+        - priority
+      properties:
+        pipeline_id:
+          type: string
+          format: uuid
+        stage_id:
+          type: string
+          format: uuid
+        contact_id:
+          type: integer
+          nullable: true
+        title:
+          type: string
+        deal_value_negotiated:
+          type: number
+          format: float
+        priority:
+          type: string
+          enum: [low, medium, high]
+        chatwoot_conversation_id:
+          type: string
+          nullable: true
+        needs_contract:
+          type: boolean
+          default: false
+
+    Contact:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123
+        chatwoot_id:
+          type: integer
+          example: 456
+        name:
+          type: string
+          example: "João Silva"
+        phone:
+          type: string
+          nullable: true
+          example: "11999999999"
+        email:
+          type: string
+          nullable: true
+          example: "joao@example.com"
+        profile_url:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ContactCreate:
+      type: object
+      required:
+        - chatwoot_id
+        - name
+      properties:
+        chatwoot_id:
+          type: integer
+          description: "Use -1 para contatos 'balcão' (sem Chatwoot)"
+        name:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        profile_url:
+          type: string
+          nullable: true
+
+    Pipeline:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Vendas Corporativas"
+        chatwoot_inbox_id:
+          type: string
+          example: "123"
+        created_at:
+          type: string
+          format: date-time
+
+    Stage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        pipeline_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Negociação"
+        position:
+          type: integer
+          example: 2
+        is_default:
+          type: boolean
+          example: false
+        is_won:
+          type: boolean
+          example: false
+          description: "Marca estágio como 'ganho' para métricas"
+        created_at:
+          type: string
+          format: date-time
+
+    # ============================================
+    # ERP SCHEMAS
+    # ============================================
+
+    Client:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        contact_id:
+          type: integer
+          nullable: true
+        full_name:
+          type: string
+          example: "Maria Santos"
+        cpf:
+          type: string
+          example: "12345678900"
+        rg_number:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+          example: "11988888888"
+        email:
+          type: string
+          nullable: true
+          example: "maria@example.com"
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        source:
+          type: string
+          enum: [crm, balcao]
+          example: "crm"
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        contacts:
+          $ref: "#/components/schemas/Contact"
+
+    ClientCreate:
+      type: object
+      required:
+        - full_name
+        - cpf
+        - source
+      properties:
+        contact_id:
+          type: integer
+          nullable: true
+        full_name:
+          type: string
+        cpf:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        source:
+          type: string
+          enum: [crm, balcao]
+
+    Contract:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        company_id:
+          type: integer
+        client_id:
+          type: integer
+        contract_type_id:
+          type: integer
+        contract_number:
+          type: string
+          example: "CONT-2024-001"
+        total_value:
+          type: number
+          format: float
+          example: 10000.00
+        discount:
+          type: number
+          format: float
+          example: 500.00
+        final_value:
+          type: number
+          format: float
+          example: 9500.00
+        installments:
+          type: integer
+          example: 10
+        payment_method_id:
+          type: integer
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+          enum: [draft, active, completed, cancelled]
+          example: "active"
+        pdf_url:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        clients:
+          type: object
+          properties:
+            id:
+              type: integer
+            full_name:
+              type: string
+            cpf:
+              type: string
+        companies:
+          type: object
+
+    Receivable:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        contract_id:
+          type: integer
+        company_id:
+          type: integer
+        client_id:
+          type: integer
+        installment_number:
+          type: integer
+          example: 1
+        due_date:
+          type: string
+          format: date
+          example: "2024-12-31"
+        amount:
+          type: number
+          format: float
+          example: 1000.00
+        status:
+          type: string
+          enum: [pending, paid, overdue, cancelled]
+          example: "pending"
+        paid_date:
+          type: string
+          format: date
+          nullable: true
+        paid_amount:
+          type: number
+          format: float
+          nullable: true
+        payment_method_id:
+          type: integer
+          nullable: true
+        receipt_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        clients:
+          type: object
+          properties:
+            id:
+              type: integer
+            full_name:
+              type: string
+        contracts:
+          type: object
+          properties:
+            contract_number:
+              type: string
+
+    # ============================================
+    # RESPONSE SCHEMAS
+    # ============================================
+
+    SuccessResponse:
+      type: object
+      properties:
+        data:
+          type: object
+        message:
+          type: string
+          example: "Operation successful"
+
+    ListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        total:
+          type: integer
+          example: 10
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Unauthorized"
+
+paths:
+  # ============================================
+  # CRM - DEALS
+  # ============================================
+
+  /api-crm/deals:
+    get:
+      tags:
+        - CRM - Deals
+      summary: Listar deals
+      description: Retorna lista de deals (negociações) não arquivados
+      operationId: listDeals
+      parameters:
+        - name: pipeline_id
+          in: query
+          description: Filtrar por pipeline
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Número máximo de resultados
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+        - name: offset
+          in: query
+          description: Offset para paginação
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Lista de deals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Deal"
+                  total:
+                    type: integer
+              examples:
+                success:
+                  value:
+                    data:
+                      - id: "550e8400-e29b-41d4-a716-446655440000"
+                        pipeline_id: "660e8400-e29b-41d4-a716-446655440000"
+                        stage_id: "770e8400-e29b-41d4-a716-446655440000"
+                        title: "Venda Notebook"
+                        deal_value_negotiated: 5000.00
+                        priority: "high"
+                        created_at: "2024-12-23T14:00:00Z"
+                    total: 1
+        "401":
+          description: Não autorizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Sem permissão (requer crm:read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      tags:
+        - CRM - Deals
+      summary: Criar deal
+      description: Cria um novo deal (negociação)
+      operationId: createDeal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DealCreate"
+            examples:
+              example1:
+                value:
+                  pipeline_id: "660e8400-e29b-41d4-a716-446655440000"
+                  stage_id: "770e8400-e29b-41d4-a716-446655440000"
+                  title: "Venda de Notebook Dell"
+                  deal_value_negotiated: 5000.00
+                  priority: "high"
+                  contact_id: 123
+      responses:
+        "201":
+          description: Deal criado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Deal"
+                  message:
+                    type: string
+        "401":
+          description: Não autorizado
+        "403":
+          description: Sem permissão (requer crm:write)
+
+  /api-crm/deals/{id}:
+    get:
+      tags:
+        - CRM - Deals
+      summary: Buscar deal por ID
+      operationId: getDeal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deal encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Deal"
+        "404":
+          description: Deal não encontrado
+
+    put:
+      tags:
+        - CRM - Deals
+      summary: Atualizar deal
+      operationId: updateDeal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                deal_value_negotiated:
+                  type: number
+                priority:
+                  type: string
+                  enum: [low, medium, high]
+                stage_id:
+                  type: string
+                  format: uuid
+            examples:
+              example1:
+                value:
+                  title: "Venda Atualizada"
+                  deal_value_negotiated: 6000.00
+      responses:
+        "200":
+          description: Deal atualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Deal"
+                  message:
+                    type: string
+        "403":
+          description: Sem permissão (requer crm:write)
+
+  # ============================================
+  # CRM - CONTACTS
+  # ============================================
+
+  /api-crm/contacts:
+    get:
+      tags:
+        - CRM - Contacts
+      summary: Listar contatos
+      operationId: listContacts
+      parameters:
+        - name: search
+          in: query
+          description: Buscar por nome, telefone ou email
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Lista de contatos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Contact"
+                  total:
+                    type: integer
+
+    post:
+      tags:
+        - CRM - Contacts
+      summary: Criar contato
+      operationId: createContact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactCreate"
+            examples:
+              example1:
+                value:
+                  chatwoot_id: -1
+                  name: "João Silva"
+                  phone: "11999999999"
+                  email: "joao@example.com"
+      responses:
+        "201":
+          description: Contato criado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Contact"
+                  message:
+                    type: string
+
+  /api-crm/contacts/{id}:
+    get:
+      tags:
+        - CRM - Contacts
+      summary: Buscar contato por ID
+      operationId: getContact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Contato encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Contact"
+
+  # ============================================
+  # CRM - PIPELINES
+  # ============================================
+
+  /api-crm/pipelines:
+    get:
+      tags:
+        - CRM - Pipelines
+      summary: Listar pipelines
+      operationId: listPipelines
+      responses:
+        "200":
+          description: Lista de pipelines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Pipeline"
+                  total:
+                    type: integer
+
+  /api-crm/pipelines/{id}:
+    get:
+      tags:
+        - CRM - Pipelines
+      summary: Buscar pipeline por ID
+      operationId: getPipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Pipeline encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Pipeline"
+
+  # ============================================
+  # ERP - CLIENTS
+  # ============================================
+
+  /api-erp/clients:
+    get:
+      tags:
+        - ERP - Clients
+      summary: Listar clientes
+      operationId: listClients
+      parameters:
+        - name: search
+          in: query
+          description: Buscar por nome ou CPF
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Lista de clientes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Client"
+                  total:
+                    type: integer
+        "403":
+          description: Sem permissão (requer erp:read)
+
+    post:
+      tags:
+        - ERP - Clients
+      summary: Criar cliente
+      operationId: createClient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientCreate"
+            examples:
+              example1:
+                value:
+                  full_name: "Maria Santos"
+                  cpf: "12345678900"
+                  phone: "11988888888"
+                  email: "maria@example.com"
+                  source: "crm"
+      responses:
+        "201":
+          description: Cliente criado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Client"
+                  message:
+                    type: string
+        "403":
+          description: Sem permissão (requer erp:write)
+
+  /api-erp/clients/{id}:
+    get:
+      tags:
+        - ERP - Clients
+      summary: Buscar cliente por ID
+      operationId: getClient
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Cliente encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Client"
+
+  # ============================================
+  # ERP - CONTRACTS
+  # ============================================
+
+  /api-erp/contracts:
+    get:
+      tags:
+        - ERP - Contracts
+      summary: Listar contratos
+      operationId: listContracts
+      parameters:
+        - name: client_id
+          in: query
+          description: Filtrar por cliente
+          schema:
+            type: integer
+        - name: status
+          in: query
+          description: Filtrar por status
+          schema:
+            type: string
+            enum: [draft, active, completed, cancelled]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Lista de contratos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Contract"
+                  total:
+                    type: integer
+
+  /api-erp/contracts/{id}:
+    get:
+      tags:
+        - ERP - Contracts
+      summary: Buscar contrato por ID
+      operationId: getContract
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Contrato encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Contract"
+
+  # ============================================
+  # ERP - RECEIVABLES
+  # ============================================
+
+  /api-erp/receivables:
+    get:
+      tags:
+        - ERP - Receivables
+      summary: Listar contas a receber
+      operationId: listReceivables
+      parameters:
+        - name: status
+          in: query
+          description: Filtrar por status
+          schema:
+            type: string
+            enum: [pending, paid, overdue, cancelled]
+        - name: client_id
+          in: query
+          description: Filtrar por cliente
+          schema:
+            type: integer
+        - name: contract_id
+          in: query
+          description: Filtrar por contrato
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Lista de contas a receber
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Receivable"
+                  total:
+                    type: integer
+
+  /api-erp/receivables/{id}:
+    get:
+      tags:
+        - ERP - Receivables
+      summary: Buscar conta a receber por ID
+      operationId: getReceivable
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conta a receber encontrada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Receivable"

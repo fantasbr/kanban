@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -94,7 +95,9 @@ export function DealEditModal({ deal, stages, open, onClose, onSave }: DealEditM
       <DialogContent className="sm:max-w-[550px] bg-white">
         <DialogHeader className="border-b border-slate-200 pb-4">
           <DialogTitle className="text-2xl font-bold text-slate-900">Editar Negócio</DialogTitle>
-          <p className="text-sm text-slate-500 mt-1">Atualize as informações do negócio</p>
+          <DialogDescription className="text-sm text-slate-500 mt-1">
+            Atualize as informações do negócio
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-6">

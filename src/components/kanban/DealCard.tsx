@@ -1,12 +1,14 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ExternalLink, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ExternalLink, Trash2, FileText } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { Deal, Priority } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
 import { useChatwootUrl } from '@/hooks/useChatwootUrl'
+import { useContracts } from '@/hooks/useContracts'
 
 interface DealCardProps {
   deal: Deal
@@ -21,7 +23,9 @@ const priorityConfig: Record<Priority, { variant: 'success' | 'warning' | 'dange
 }
 
 export function DealCard({ deal, onEdit, onDelete }: DealCardProps) {
+  const navigate = useNavigate()
   const { chatwootUrl } = useChatwootUrl()
+  const { contracts } = useContracts()
   const {
     attributes,
     listeners,
@@ -38,6 +42,13 @@ export function DealCard({ deal, onEdit, onDelete }: DealCardProps) {
   }
 
   const priority = priorityConfig[deal.priority]
+
+  const handleContractClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (deal.existing_client_id) {
+      navigate(`/erp/contracts?clientId=${deal.existing_client_id}`)
+    }
+  }
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
@@ -104,9 +115,27 @@ export function DealCard({ deal, onEdit, onDelete }: DealCardProps) {
               <span className="text-lg font-bold text-blue-600">
                 {formatCurrency(deal.deal_value_negotiated)}
               </span>
-              <Badge variant={priority.variant} className="font-medium">
-                {priority.label}
-              </Badge>
+              <div className="flex items-center gap-1">
+                <Badge variant={priority.variant} className="font-medium">
+                  {priority.label}
+                </Badge>
+                {deal.existing_client_id && contracts.some(c => c.client_id === deal.existing_client_id && c.status === 'active') && (
+                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                    <FileText className="h-3 w-3 mr-1" />
+                    ERP
+                  </Badge>
+                )}
+                {deal.needs_contract && deal.existing_client_id && (
+                  <Badge 
+                    variant="warning" 
+                    className="bg-amber-50 text-amber-700 border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors"
+                    onClick={handleContractClick}
+                  >
+                    <FileText className="h-3 w-3 mr-1" />
+                    Contrato Pendente
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
         </CardContent>

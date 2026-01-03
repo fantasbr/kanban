@@ -7,6 +7,7 @@ import { Search, Mail, Phone, User, ExternalLink, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ContactEditModal } from '@/components/contacts/ContactEditModal'
 import { ContactCreateModal } from '@/components/contacts/ContactCreateModal'
+import { ContactDetailsModal } from '@/components/contacts/ContactDetailsModal'
 import type { Contact } from '@/types/database'
 import { useChatwootUrl } from '@/hooks/useChatwootUrl'
 
@@ -14,9 +15,16 @@ export function Contacts() {
   const { chatwootUrl } = useChatwootUrl()
   const { contacts, isLoading, searchQuery, setSearchQuery, updateContact, createContact } = useContacts()
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'with-email' | 'with-phone'>('all')
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+
+  const handleViewContact = (contact: Contact) => {
+    setSelectedContact(contact)
+    setIsDetailsModalOpen(true)
+  }
 
   const handleEditContact = (contact: Contact) => {
     setEditingContact(contact)
@@ -124,7 +132,7 @@ export function Contacts() {
             <Card 
               key={contact.id} 
               className="hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={() => handleEditContact(contact)}
+              onClick={() => handleViewContact(contact)}
             >
               <CardHeader className="pb-3">
                 <div className="flex items-start gap-3">
@@ -196,6 +204,17 @@ export function Contacts() {
           Mostrando {filteredContacts.length} de {contacts.length} contatos
         </div>
       )}
+
+      {/* Details Modal */}
+      <ContactDetailsModal
+        contact={selectedContact}
+        open={isDetailsModalOpen}
+        onClose={() => setIsDetailsModalOpen(false)}
+        onEdit={(contact) => {
+          setIsDetailsModalOpen(false)
+          handleEditContact(contact)
+        }}
+      />
 
       {/* Edit Modal */}
       <ContactEditModal

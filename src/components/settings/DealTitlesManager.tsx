@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
 import {
@@ -220,6 +221,7 @@ export function DealTitlesManager() {
         <DialogContent className="sm:max-w-[425px] bg-white">
           <DialogHeader>
             <DialogTitle>Adicionar Título</DialogTitle>
+            <DialogDescription>Crie um novo título para organizar seus negócios</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -275,6 +277,7 @@ export function DealTitlesManager() {
         <DialogContent className="sm:max-w-[425px] bg-white">
           <DialogHeader>
             <DialogTitle>Editar Título</DialogTitle>
+            <DialogDescription>Atualize as informações do título</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

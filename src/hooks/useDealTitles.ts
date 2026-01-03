@@ -43,6 +43,7 @@ export function useCreateDealTitle() {
       
       const { data, error } = await supabase
         .from('crm_deal_titles')
+        // @ts-expect-error - Supabase type inference issue
         .insert(insertData)
         .select()
         .single()
@@ -69,6 +70,7 @@ export function useUpdateDealTitle() {
       
       const { data, error } = await supabase
         .from('crm_deal_titles')
+        // @ts-expect-error - Supabase type inference issue with Partial
         .update(updateData)
         .eq('id', id)
         .select()
@@ -93,6 +95,7 @@ export function useToggleDealTitleActive() {
       
       const { data, error } = await supabase
         .from('crm_deal_titles')
+        // @ts-expect-error - Supabase type inference issue with Partial
         .update(updateData)
         .eq('id', id)
         .select()

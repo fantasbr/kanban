@@ -26,7 +26,7 @@ export function ChatwootSettings() {
       { key: 'chatwoot_url', value: url },
       {
         onSuccess: () => {
-          console.log('Chatwoot URL atualizada com sucesso:', url)
+          // URL updated successfully
         },
         onError: (error) => {
           console.error('Erro ao atualizar URL:', error)

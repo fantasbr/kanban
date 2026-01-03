@@ -41,20 +41,17 @@ export function PipelineManager() {
   }
 
   const handleDeleteClick = (pipeline: Pipeline) => {
-    console.log('handleDeleteClick called with pipeline:', pipeline)
     setPipelineToDelete(pipeline)
   }
 
   const handleConfirmDelete = () => {
     if (pipelineToDelete) {
-      console.log('User confirmed deletion, calling deletePipeline with id:', pipelineToDelete.id)
       deletePipeline(pipelineToDelete.id)
       setPipelineToDelete(null)
     }
   }
 
   const handleCancelDelete = () => {
-    console.log('User cancelled deletion')
     setPipelineToDelete(null)
   }
 

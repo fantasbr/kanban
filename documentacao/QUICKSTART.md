@@ -1,4 +1,4 @@
-# Vibe CRM Kanban - Configuração Completa ✅
+# Branca SGI - Sistema de Gestão Integrada - Configuração Completa ✅
 
 ## 🎯 Status: Pronto para Uso!
 
@@ -9,7 +9,7 @@ O projeto está **100% configurado** e pronto para ser executado.
 ## 🔑 Credenciais do Supabase
 
 **Projeto:** vibe-kanban  
-**URL:** `https://wkilbrcvnubxjvzahpbd.supabase.co`  
+**URL:** `https://SEU-PROJETO.supabase.co`  
 **Anon Key:** Já configurada no arquivo `.env`
 
 ---
@@ -60,7 +60,7 @@ Você precisa criar um usuário no Supabase:
 
 **Opção A: Via Painel do Supabase**
 
-1. Acesse: https://supabase.com/dashboard/project/wkilbrcvnubxjvzahpbd
+1. Acesse: https://supabase.com/dashboard/project/SEU-PROJETO-ID
 2. Vá em **Authentication** → **Users**
 3. Clique em **Add User**
 4. Crie um usuário com email/senha

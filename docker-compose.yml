@@ -1,0 +1,57 @@
+version: "3.8"
+
+services:
+  # Frontend - Kanban CRM/ERP
+  kanban-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kanban-frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    networks:
+      - traefik-public
+    labels:
+      # Traefik configuration
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+
+      # HTTP
+      - "traefik.http.routers.kanban.rule=Host(`kanban.seudominio.com`)"
+      - "traefik.http.routers.kanban.entrypoints=web"
+      - "traefik.http.routers.kanban.middlewares=redirect-to-https"
+
+      # HTTPS
+      - "traefik.http.routers.kanban-secure.rule=Host(`kanban.seudominio.com`)"
+      - "traefik.http.routers.kanban-secure.entrypoints=websecure"
+      - "traefik.http.routers.kanban-secure.tls=true"
+      - "traefik.http.routers.kanban-secure.tls.certresolver=letsencrypt"
+
+      # Service
+      - "traefik.http.services.kanban.loadbalancer.server.port=80"
+
+      # Middleware redirect HTTP -> HTTPS
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+
+      # Portainer labels
+      - "io.portainer.accesscontrol.teams=admins"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  traefik-public:
+    external: true

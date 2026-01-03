@@ -22,7 +22,7 @@ export function Login() {
     try {
       await signIn(email, password)
       navigate('/')
-    } catch (err) {
+    } catch {
       setError('Email ou senha inválidos')
     } finally {
       setLoading(false)
@@ -33,9 +33,9 @@ export function Login() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Vibe CRM</CardTitle>
+          <CardTitle className="text-2xl font-bold">Branca SGI</CardTitle>
           <CardDescription>
-            Entre com suas credenciais para acessar o sistema
+            Sistema de Gestão Integrada - Entre com suas credenciais
           </CardDescription>
         </CardHeader>
         <CardContent>
