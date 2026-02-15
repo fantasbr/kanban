@@ -15,7 +15,7 @@ export function useArchivedDeals() {
           crm_stages(id, name, pipeline_id, is_won),
           erp_contracts(id, contract_number, final_value, status)
         `)
-        .or('is_archived.eq.true,is_active.eq.false,contract_id.not.is.null')
+        .eq('is_archived', true)
         .order('archived_at', { ascending: false, nullsFirst: false })
 
       if (error) throw error

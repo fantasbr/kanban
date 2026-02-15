@@ -1,24 +1,24 @@
-/**
- * Status possíveis de um contrato
- */
-export type ContractStatus = 'active' | 'completed' | 'inactive'
+export type ContractStatus = 'draft' | 'active' | 'completed' | 'cancelled';
+
 
 /**
  * Configuração de cores para cada status
  */
 export const CONTRACT_STATUS_COLORS: Record<ContractStatus, string> = {
+  draft: 'bg-slate-100 text-slate-700',
   active: 'bg-green-100 text-green-700',
   completed: 'bg-blue-100 text-blue-700',
-  inactive: 'bg-gray-100 text-gray-700',
+  cancelled: 'bg-red-100 text-red-700',
 }
 
 /**
  * Labels traduzidos para cada status
  */
 export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
+  draft: 'Rascunho',
   active: 'Ativo',
   completed: 'Concluído',
-  inactive: 'Inativo',
+  cancelled: 'Cancelado',
 }
 
 /**

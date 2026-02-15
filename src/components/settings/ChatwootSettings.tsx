@@ -4,36 +4,39 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Key, Hash } from 'lucide-react'
+import { toast } from 'sonner'
 
 export function ChatwootSettings() {
   const { settings, updateSetting } = useSettings()
   const [url, setUrl] = useState(settings.chatwoot_url || '')
+  const [accountId, setAccountId] = useState(settings.chatwoot_account_id || '')
+  const [accessToken, setAccessToken] = useState(settings.chatwoot_access_token || '')
   const [isSaving, setIsSaving] = useState(false)
 
   // Update local state when settings load from server
-  // Only sync if we're not currently saving (to avoid overwriting user edits)
   useEffect(() => {
-    if (settings.chatwoot_url && !isSaving) {
-      setUrl(settings.chatwoot_url)
+    if (!isSaving) {
+      if (settings.chatwoot_url) setUrl(settings.chatwoot_url)
+      if (settings.chatwoot_account_id) setAccountId(settings.chatwoot_account_id)
+      if (settings.chatwoot_access_token) setAccessToken(settings.chatwoot_access_token)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.chatwoot_url])
+  }, [settings, isSaving])
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true)
-    updateSetting(
-      { key: 'chatwoot_url', value: url },
-      {
-        onSuccess: () => {
-          // URL updated successfully
-        },
-        onError: (error) => {
-          console.error('Erro ao atualizar URL:', error)
-        },
-        onSettled: () => setIsSaving(false),
-      }
-    )
+    try {
+      if (url) await updateSetting({ key: 'chatwoot_url', value: url })
+      if (accountId) await updateSetting({ key: 'chatwoot_account_id', value: accountId })
+      if (accessToken) await updateSetting({ key: 'chatwoot_access_token', value: accessToken })
+      
+      toast.success('Configurações do Chatwoot salvas com sucesso!')
+    } catch (error) {
+      console.error('Erro ao salvar:', error)
+      toast.error('Erro ao salvar configurações')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const isValidUrl = (str: string) => {
@@ -52,10 +55,11 @@ export function ChatwootSettings() {
       <CardHeader>
         <CardTitle>Integração Chatwoot</CardTitle>
         <p className="text-sm text-slate-500 mt-1">
-          Configure a URL base do seu Chatwoot para abrir conversas e contatos
+          Configure a integração com o Chatwoot para sincronização de contatos
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
+        {/* URL Configuration */}
         <div className="space-y-2">
           <Label htmlFor="chatwoot-url">URL do Chatwoot</Label>
           <Input
@@ -69,25 +73,68 @@ export function ChatwootSettings() {
           {!isValid && url && (
             <p className="text-sm text-red-500">URL inválida. Deve começar com http:// ou https://</p>
           )}
+          <p className="text-xs text-slate-500">
+            URL base da sua instalação do Chatwoot
+          </p>
         </div>
 
-        {isValid && (
+        {/* Account ID Configuration */}
+        <div className="space-y-2">
+          <Label htmlFor="chatwoot-account-id" className="flex items-center gap-2">
+            <Hash className="h-4 w-4 text-slate-400" />
+            Account ID
+          </Label>
+          <Input
+            id="chatwoot-account-id"
+            type="number"
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            placeholder="Ex: 1"
+            className="h-11"
+          />
+          <p className="text-xs text-slate-500">
+            ID da conta no Chatwoot (geralmente visível na URL após /app/accounts/<b>ID</b>/...)
+          </p>
+        </div>
+
+        {/* Access Token Configuration */}
+        <div className="space-y-2">
+          <Label htmlFor="chatwoot-token" className="flex items-center gap-2">
+            <Key className="h-4 w-4 text-slate-400" />
+            Access Token
+          </Label>
+          <Input
+            id="chatwoot-token"
+            type="password"
+            value={accessToken}
+            onChange={(e) => setAccessToken(e.target.value)}
+            placeholder="Digite seu token de acesso"
+            className="h-11 font-mono"
+          />
+          <p className="text-xs text-slate-500">
+            Token de acesso da API do Chatwoot (Configurações de Perfil {'>'} Token de Acesso)
+          </p>
+        </div>
+
+        {isValid && url && accountId && (
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-            <p className="text-sm text-blue-700 font-medium mb-2">Preview:</p>
+            <p className="text-sm text-blue-700 font-medium mb-2">Preview de Link:</p>
             <div className="flex items-center gap-2 text-sm text-blue-600">
               <ExternalLink className="h-4 w-4" />
-              <span className="truncate">{url}/app/accounts/1/conversations/12345</span>
+              <span className="truncate">{url}/app/accounts/{accountId}/conversations/12345</span>
             </div>
           </div>
         )}
 
-        <Button 
-          onClick={handleSave} 
-          disabled={!isValid || isSaving}
-          className="w-full sm:w-auto"
-        >
-          {isSaving ? 'Salvando...' : 'Salvar Configuração'}
-        </Button>
+        <div className="pt-2">
+          <Button 
+            onClick={handleSave} 
+            disabled={!isValid || isSaving}
+            className="w-full sm:w-auto"
+          >
+            {isSaving ? 'Salvando...' : 'Salvar Configuração'}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )

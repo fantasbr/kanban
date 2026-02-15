@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -16,12 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { Priority, Stage, Contact } from '@/types/database'
-import { formatCurrency } from '@/lib/utils'
-import { useDealTitles } from '@/hooks/useDealTitles'
+import type { Priority, Stage, DealItem } from '@/types/database'
+import { useContractTypes } from '@/hooks/useERPConfig'
+import { useCompanies } from '@/hooks/useCompanies'
 import { useContacts } from '@/hooks/useContacts'
 import { ContactCreateModal } from '@/components/contacts/ContactCreateModal'
+import { DealTemplateWithItems } from './DealTemplateWithItems'
 import { Search, X, UserPlus } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 interface DealCreateModalProps {
   pipelineId: string
@@ -31,11 +33,15 @@ interface DealCreateModalProps {
   onCreate: (data: {
     pipeline_id: string
     stage_id: string
-    title: string
     deal_value_negotiated: number
     priority: Priority
-    contact_id?: number | null
+    contact_id: number
+    company_id: number
+    contract_type_id?: number | null
+    contract_template_id?: number | null
+    items?: Omit<DealItem, 'id' | 'deal_id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'>[]
   }) => void
+  defaultStageId?: string
 }
 
 const priorityOptions: { value: Priority; label: string }[] = [
@@ -50,305 +56,313 @@ export function DealCreateModal({
   open,
   onClose,
   onCreate,
+  defaultStageId,
 }: DealCreateModalProps) {
-  const { data: dealTitles, isLoading: isLoadingTitles } = useDealTitles()
-  const { contacts, searchQuery, setSearchQuery, createContact } = useContacts()
-  const [title, setTitle] = useState('')
+  const { activeContractTypes } = useContractTypes()
+  const { companies } = useCompanies()
+  const { contacts } = useContacts()
+
+  // Form state
+  const [selectedContact, setSelectedContact] = useState<{ id: number; name: string } | null>(null)
+  const [companyId, setCompanyId] = useState<number | null>(null)
+  const [contractTypeId, setContractTypeId] = useState<number | null>(null)
+  const [contractTemplateId, setContractTemplateId] = useState<number | null>(null)
+  const [items, setItems] = useState<Omit<DealItem, 'id' | 'deal_id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'>[]>([])
   const [dealValue, setDealValue] = useState('')
   const [priority, setPriority] = useState<Priority>('medium')
-  const [stageId, setStageId] = useState('')
-  const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
-  const [showContactDropdown, setShowContactDropdown] = useState(false)
-  const [isContactModalOpen, setIsContactModalOpen] = useState(false)
+  const [stageId, setStageId] = useState(defaultStageId || stages.find((s) => s.is_default)?.id || stages[0]?.id || '')
 
-  // Calculate default stage
-  const defaultStageId = useMemo(() => {
-    if (stages.length === 0) return ''
-    const defaultStage = stages.find((s) => s.is_default) || stages[0]
-    return defaultStage.id
-  }, [stages])
+  // Contact search
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showContactModal, setShowContactModal] = useState(false)
 
-  // Set default stage when modal opens
-  useEffect(() => {
-    if (open && !stageId && defaultStageId) {
-      setStageId(defaultStageId)
-    }
-  }, [open, defaultStageId])
 
-  // Handle title change and update deal value
-  const handleTitleChange = (newTitle: string) => {
-    setTitle(newTitle)
-    const selectedDealTitle = dealTitles?.find((dt) => dt.title === newTitle)
-    if (selectedDealTitle?.value_default && !dealValue) {
-      setDealValue(selectedDealTitle.value_default.toString())
-    }
+  // Auto-calculate deal value from items
+  const handleTotalChange = (total: number) => {
+    setDealValue(total.toString())
   }
 
   const handleCreate = () => {
-    if (!title.trim() || !dealValue || !stageId) return
+    if (!selectedContact || !companyId || !dealValue || !stageId) return
 
     onCreate({
       pipeline_id: pipelineId,
       stage_id: stageId,
-      title,
       deal_value_negotiated: parseFloat(dealValue),
       priority,
-      contact_id: selectedContact?.id || null,
+      contact_id: selectedContact.id,
+      company_id: companyId,
+      contract_type_id: contractTypeId,
+      contract_template_id: contractTemplateId,
+      items: items.length > 0 ? items : undefined,
     })
 
     // Reset form
-    setTitle('')
+    setSelectedContact(null)
+    setCompanyId(null)
+    setContractTypeId(null)
+    setContractTemplateId(null)
+    setItems([])
     setDealValue('')
     setPriority('medium')
     setStageId(stages.find((s) => s.is_default)?.id || stages[0]?.id || '')
-    setSelectedContact(null)
     setSearchQuery('')
     onClose()
   }
 
-  const selectedDealTitle = dealTitles?.find((dt) => dt.title === title)
-  const defaultValue = selectedDealTitle?.value_default
+  const filteredContacts = contacts?.filter((contact) =>
+    contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    contact.phone?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    contact.email?.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] bg-white">
-        <DialogHeader className="border-b border-slate-200 pb-4">
-          <DialogTitle className="text-2xl font-bold text-slate-900">
-            Novo Negócio
-          </DialogTitle>
-          <DialogDescription className="text-sm text-slate-500 mt-1">
-            Cadastre um novo negócio no pipeline
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto bg-white">
+          <DialogHeader className="border-b border-slate-200 pb-4">
+            <DialogTitle className="text-2xl font-bold text-slate-900">Novo Negócio</DialogTitle>
+            <DialogDescription className="text-sm text-slate-500 mt-1">
+              Cadastre um novo negócio no pipeline
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4 py-6">
-          {/* Title */}
-          <div className="space-y-2">
-            <Label htmlFor="title" className="text-sm font-semibold text-slate-700">
-              Título do Negócio <span className="text-red-500">*</span>
-            </Label>
-            <Select value={title} onValueChange={handleTitleChange}>
-              <SelectTrigger id="title" className="h-11 border-slate-300">
-                <SelectValue placeholder="Selecione o título do negócio" />
-              </SelectTrigger>
-              <SelectContent position="popper" sideOffset={5} className="bg-white border-slate-200">
-                {isLoadingTitles ? (
-                  <div className="p-2 text-sm text-slate-500">Carregando...</div>
-                ) : dealTitles && dealTitles.length > 0 ? (
-                  dealTitles.map((dealTitle) => (
-                    <SelectItem key={dealTitle.id} value={dealTitle.title}>
-                      {dealTitle.title}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <div className="p-2 text-sm text-slate-500">
-                    Nenhum título cadastrado. Configure em Configurações.
+          <div className="space-y-4 py-6">
+            {/* 1. Contact (FIRST FIELD) */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-slate-700">
+                Contato <span className="text-red-500">*</span>
+              </Label>
+              
+              {selectedContact ? (
+                <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex-1">
+                    <p className="font-medium text-slate-900">{selectedContact.name}</p>
                   </div>
-                )}
-              </SelectContent>
-            </Select>
-            {defaultValue && (
-              <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                <svg className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-sm text-blue-700">
-                  Valor padrão: <strong>{formatCurrency(defaultValue)}</strong>
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Deal Value */}
-          <div className="space-y-2">
-            <Label htmlFor="deal-value" className="text-sm font-semibold text-slate-700">
-              Valor Negociado <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="deal-value"
-              type="number"
-              step="0.01"
-              value={dealValue}
-              onChange={(e) => setDealValue(e.target.value)}
-              placeholder="0.00"
-              className="h-11 border-slate-300 focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* Priority */}
-          <div className="space-y-2">
-            <Label htmlFor="priority" className="text-sm font-semibold text-slate-700">
-              Prioridade
-            </Label>
-            <Select value={priority} onValueChange={(value) => setPriority(value as Priority)}>
-              <SelectTrigger id="priority" className="h-11 border-slate-300">
-                <SelectValue placeholder="Selecione a prioridade" />
-              </SelectTrigger>
-              <SelectContent position="popper" sideOffset={5} className="bg-white border-slate-200">
-                {priorityOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Stage */}
-          <div className="space-y-2">
-            <Label htmlFor="stage" className="text-sm font-semibold text-slate-700">
-              Estágio Inicial <span className="text-red-500">*</span>
-            </Label>
-            <Select value={stageId} onValueChange={setStageId}>
-              <SelectTrigger id="stage" className="h-11 border-slate-300">
-                <SelectValue placeholder="Selecione o estágio inicial" />
-              </SelectTrigger>
-              <SelectContent position="popper" sideOffset={5} className="bg-white border-slate-200">
-                {stages.map((stage) => (
-                  <SelectItem key={stage.id} value={stage.id}>
-                    {stage.name}
-                    {stage.is_default && (
-                      <span className="ml-2 text-xs text-blue-600">(Padrão)</span>
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Contact Search */}
-          <div className="space-y-2">
-            <Label htmlFor="contact-search" className="text-sm font-semibold text-slate-700">
-              Contato (Opcional)
-            </Label>
-            {selectedContact ? (
-              <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                {selectedContact.profile_url ? (
-                  <img
-                    src={selectedContact.profile_url}
-                    alt={selectedContact.name}
-                    className="w-8 h-8 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
-                    {selectedContact.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 truncate">{selectedContact.name}</p>
-                  {selectedContact.phone && (
-                    <p className="text-xs text-slate-500 truncate">{selectedContact.phone}</p>
-                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedContact(null)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 shrink-0 hover:bg-red-50 hover:text-red-600"
-                  onClick={() => {
-                    setSelectedContact(null)
-                    setSearchQuery('')
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
-                  id="contact-search"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value)
-                    setShowContactDropdown(e.target.value.length > 0)
-                  }}
-                  onFocus={() => setShowContactDropdown(searchQuery.length > 0)}
-                  placeholder="Buscar contato por nome, telefone ou email..."
-                  className="h-11 pl-10 border-slate-300 focus:border-blue-500 focus:ring-blue-500"
-                />
-                {showContactDropdown && contacts.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {contacts.slice(0, 5).map((contact) => (
-                      <button
-                        key={contact.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedContact(contact)
-                          setSearchQuery('')
-                          setShowContactDropdown(false)
-                        }}
-                        className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 transition-colors text-left"
-                      >
-                        {contact.profile_url ? (
-                          <img
-                            src={contact.profile_url}
-                            alt={contact.name}
-                            className="w-8 h-8 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
-                            {contact.name.charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-900 truncate">{contact.name}</p>
-                          {contact.phone && (
-                            <p className="text-xs text-slate-500 truncate">{contact.phone}</p>
-                          )}
-                        </div>
-                      </button>
-                    ))}
+              ) : (
+                <>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input
+                      placeholder="Buscar contato por nome, telefone ou email..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 h-11 border-slate-300"
+                    />
                   </div>
-                )}
-              </div>
-            )}
-            
-            {/* Create New Contact Button */}
-            {!selectedContact && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsContactModalOpen(true)}
-                className="w-full mt-2 border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 hover:border-blue-400"
+
+                  {searchQuery && filteredContacts && filteredContacts.length > 0 && (
+                    <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg">
+                      {filteredContacts.slice(0, 5).map((contact) => (
+                        <button
+                          key={contact.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedContact({ id: contact.id, name: contact.name })
+                            setSearchQuery('')
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0"
+                        >
+                          <p className="font-medium text-sm">{contact.name}</p>
+                          {contact.phone && (
+                            <p className="text-xs text-slate-500">{contact.phone}</p>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowContactModal(true)}
+                    className="w-full h-11 border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Criar Novo Contato
+                  </Button>
+                </>
+              )}
+            </div>
+
+            {/* 2. Company */}
+            <div className="space-y-2">
+              <Label htmlFor="company" className="text-sm font-semibold text-slate-700">
+                Empresa <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={companyId?.toString() ?? ''}
+                onValueChange={(value) => setCompanyId(value ? parseInt(value) : null)}
               >
-                <UserPlus className="h-4 w-4 mr-2" />
-                Criar Novo Contato
-              </Button>
+                <SelectTrigger id="company" className="h-11 border-slate-300">
+                  <SelectValue placeholder="Selecione a empresa" />
+                </SelectTrigger>
+                <SelectContent position="popper" sideOffset={5} className="bg-white border-slate-200">
+                  {companies?.filter(c => c.is_active).map((company) => (
+                    <SelectItem key={company.id} value={company.id.toString()}>
+                      {company.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 3. Contract Type */}
+            <div className="space-y-2">
+              <Label htmlFor="contract-type" className="text-sm font-semibold text-slate-700">
+                Tipo de Contrato
+              </Label>
+              <Select
+                value={contractTypeId?.toString() ?? ''}
+                onValueChange={(value) => {
+                  setContractTypeId(value ? parseInt(value) : null)
+                  setContractTemplateId(null)
+                  setItems([])
+                }}
+              >
+                <SelectTrigger id="contract-type" className="h-11 border-slate-300">
+                  <SelectValue placeholder="Selecione o tipo (opcional)" />
+                </SelectTrigger>
+                <SelectContent position="popper" sideOffset={5} className="bg-white border-slate-200">
+                  {activeContractTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id.toString()}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 4. Template with Items */}
+            {contractTypeId && (
+              <DealTemplateWithItems
+                contractTypeId={contractTypeId}
+                templateId={contractTemplateId}
+                onTemplateChange={setContractTemplateId}
+                items={items}
+                onItemsChange={setItems}
+                onTotalChange={handleTotalChange}
+              />
             )}
+
+            {/* 5. Deal Value */}
+            <div className="space-y-2">
+              <Label htmlFor="deal-value" className="text-sm font-semibold text-slate-700">
+                Valor Negociado <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="deal-value"
+                type="number"
+                step="0.01"
+                value={dealValue}
+                onChange={(e) => setDealValue(e.target.value)}
+                placeholder="0.00"
+                className="h-11 border-slate-300 focus:border-blue-500 focus:ring-blue-500"
+                disabled={items.length > 0} // Disabled if items are present
+              />
+              {items.length > 0 && (
+                <p className="text-xs text-slate-500">
+                  Valor calculado automaticamente dos itens
+                </p>
+              )}
+            </div>
+
+            {/* 6. Priority */}
+            <div className="space-y-2">
+              <Label htmlFor="priority" className="text-sm font-semibold text-slate-700">
+                Prioridade
+              </Label>
+              <Select value={priority} onValueChange={(value) => setPriority(value as Priority)}>
+                <SelectTrigger id="priority" className="h-11 border-slate-300">
+                  <SelectValue placeholder="Selecione a prioridade" />
+                </SelectTrigger>
+                <SelectContent position="popper" sideOffset={5} className="bg-white border-slate-200">
+                  {priorityOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 7. Initial Stage */}
+            <div className="space-y-2">
+              <Label htmlFor="stage" className="text-sm font-semibold text-slate-700">
+                Estágio Inicial <span className="text-red-500">*</span>
+              </Label>
+              <Select value={stageId} onValueChange={setStageId}>
+                <SelectTrigger id="stage" className="h-11 border-slate-300">
+                  <SelectValue placeholder="Selecione o estágio" />
+                </SelectTrigger>
+                <SelectContent position="popper" sideOffset={5} className="bg-white border-slate-200">
+                  {stages.map((stage) => (
+                    <SelectItem key={stage.id} value={stage.id}>
+                      {stage.name} {stage.is_default && '(Padrão)'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </div>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-          <Button variant="outline" onClick={onClose} className="px-6">
-            Cancelar
-          </Button>
-          <Button
-            onClick={handleCreate}
-            disabled={!title.trim() || !dealValue || !stageId}
-            className="px-6 bg-blue-600 hover:bg-blue-700"
-          >
-            Criar Negócio
-          </Button>
-        </div>
-      </DialogContent>
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+            <Button variant="outline" onClick={onClose} className="px-6">
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!selectedContact || !companyId || !dealValue || !stageId}
+              className="px-6 bg-blue-600 hover:bg-blue-700"
+            >
+              Criar Negócio
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-      {/* Contact Creation Modal */}
+      {/* Contact Create Modal */}
       <ContactCreateModal
-        open={isContactModalOpen}
-        onClose={() => setIsContactModalOpen(false)}
-        onCreate={createContact}
+        open={showContactModal}
+        onClose={() => setShowContactModal(false)}
+        onCreate={async (data) => {
+          const { data: contact, error } = await supabase
+            .from('crm_contacts')
+            .insert([data as never])
+            .select()
+            .single()
+          
+          if (error) throw error
+          return contact
+        }}
         mode="balcao"
         onSuccess={(contactId) => {
-          // Find the newly created contact and select it
-          const newContact = contacts.find(c => c.id === contactId)
-          if (newContact) {
-            setSelectedContact(newContact)
-          }
-          setIsContactModalOpen(false)
+          // Fetch contact name
+          supabase
+            .from('crm_contacts')
+            .select('name')
+            .eq('id', contactId)
+            .single()
+            .then(({ data }) => {
+              const contactData = data as unknown as { name: string } // Minimal shape needed
+              if (contactData) {
+                setSelectedContact({ id: contactId, name: contactData.name })
+              }
+            })
+          setShowContactModal(false)
         }}
       />
-    </Dialog>
+    </>
   )
 }

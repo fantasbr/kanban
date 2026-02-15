@@ -35,10 +35,9 @@ export function useSettings() {
         updated_at: new Date().toISOString()
       }
       
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await supabase
         .from('app_settings')
-        .upsert(settingData as any, {
+        .upsert(settingData as unknown as never, {
           onConflict: 'key'
         })
 

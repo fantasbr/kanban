@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { AvailabilitySlot } from '@/types/database'
+import type { AvailabilitySlot, Instructor, WeeklySchedule, Lesson, InstructorBlock } from '@/types/database'
 import { format, addMinutes, parse } from 'date-fns'
 
 interface UseAvailabilityProps {
@@ -25,14 +25,16 @@ export function useAvailability(props: UseAvailabilityProps) {
         .select('lesson_duration_minutes, weekly_schedule')
         .eq('id', instructor_id)
         .single()
-
+      
       if (!instructor) return []
+      
+      const instructorData = instructor as Instructor
 
       // Get day of week
-      const dayOfWeek = format(new Date(date), 'EEEE').toLowerCase()
-      const schedule = instructor.weekly_schedule[dayOfWeek]
+      const dayOfWeek = format(new Date(date), 'EEEE').toLowerCase() as keyof WeeklySchedule
+      const schedule = instructorData.weekly_schedule?.[dayOfWeek]
 
-      if (!schedule?.enabled) {
+      if (!schedule?.enabled || !schedule.start || !schedule.end) {
         return [{
           start: '00:00',
           end: '23:59',
@@ -48,13 +50,18 @@ export function useAvailability(props: UseAvailabilityProps) {
         .eq('instructor_id', instructor_id)
         .eq('lesson_date', date)
         .neq('status', 'cancelled')
+      
+      const lessonsData = (lessons as unknown as Pick<Lesson, 'start_time' | 'end_time'>[]) || []
 
       // Get manual blocks
       const { data: blocks } = await supabase
         .from('erp_instructor_blocks')
-        .select('start_time, end_time, all_day, reason')
+        .select('start_date, end_date, reason')
         .eq('instructor_id', instructor_id)
-        .eq('block_date', date)
+        .lte('start_date', date)
+        .gte('end_date', date)
+
+      const blocksData = (blocks as unknown as Pick<InstructorBlock, 'start_date' | 'end_date' | 'reason'>[]) || []
 
       // Generate time slots (every 30 minutes)
       const slots: AvailabilitySlot[] = []
@@ -66,10 +73,10 @@ export function useAvailability(props: UseAvailabilityProps) {
 
       while (current < workEnd) {
         const slotStart = format(current, 'HH:mm')
-        const slotEnd = format(addMinutes(current, instructor.lesson_duration_minutes), 'HH:mm')
+        const slotEnd = format(addMinutes(current, instructorData.lesson_duration_minutes || 60), 'HH:mm')
 
         // Check if this slot overlaps with any lesson
-        const hasLesson = lessons?.some(lesson => {
+        const hasLesson = lessonsData.some(lesson => {
           return (
             (slotStart >= lesson.start_time && slotStart < lesson.end_time) ||
             (slotEnd > lesson.start_time && slotEnd <= lesson.end_time) ||
@@ -78,21 +85,14 @@ export function useAvailability(props: UseAvailabilityProps) {
         })
 
         // Check if this slot overlaps with any block
-        const hasBlock = blocks?.some(block => {
-          if (block.all_day) return true
-          return (
-            (slotStart >= block.start_time && slotStart < block.end_time) ||
-            (slotEnd > block.start_time && slotEnd <= block.end_time) ||
-            (slotStart <= block.start_time && slotEnd >= block.end_time)
-          )
-        })
+        // Since blocks are date-based (full days), existence implies the whole day is blocked
+        const hasBlock = blocksData && blocksData.length > 0
 
         slots.push({
           start: slotStart,
           end: slotEnd,
           available: !hasLesson && !hasBlock,
-          reason: hasBlock ? blocks?.find(b => b.all_day || 
-            (slotStart >= b.start_time && slotStart < b.end_time))?.reason : 
+          reason: hasBlock ? blocksData[0].reason : 
             hasLesson ? 'Aula agendada' : undefined
         })
 
@@ -117,6 +117,8 @@ export function useAvailability(props: UseAvailabilityProps) {
         .eq('vehicle_id', vehicle_id)
         .eq('lesson_date', date)
         .neq('status', 'cancelled')
+      
+      const lessonsData = (lessons as unknown as Pick<Lesson, 'start_time' | 'end_time'>[]) || []
 
       // Generate time slots (8:00 - 22:00, every 30 minutes)
       const slots: AvailabilitySlot[] = []
@@ -132,7 +134,7 @@ export function useAvailability(props: UseAvailabilityProps) {
         const slotEnd = format(addMinutes(current, lessonDuration), 'HH:mm')
 
         // Check if this slot overlaps with any lesson
-        const hasLesson = lessons?.some(lesson => {
+        const hasLesson = lessonsData.some(lesson => {
           return (
             (slotStart >= lesson.start_time && slotStart < lesson.end_time) ||
             (slotEnd > lesson.start_time && slotEnd <= lesson.end_time) ||

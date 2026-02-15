@@ -1,32 +1,49 @@
-import { Link, useLocation } from 'react-router-dom'
-import { Home, Users, BarChart3, Clock, Archive, Settings, LogOut, UserCircle, FileText, DollarSign, Car, GraduationCap, Calendar, CalendarClock } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { useAuth } from '@/hooks/useAuth'
-import { cn } from '@/lib/utils'
-import { BrandingLogo } from '@/components/branding/BrandingLogo'
+import { Link, useLocation } from "react-router-dom";
+import {
+  Home,
+  Users,
+  BarChart3,
+  Clock,
+  Archive,
+  Settings,
+  LogOut,
+  UserCircle,
+  FileText,
+  DollarSign,
+  Calendar,
+  CalendarClock,
+  PieChart,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { cn } from "@/lib/utils";
+import { BrandingLogo } from "@/components/branding/BrandingLogo";
 
 const crmNavigation = [
-  { name: 'Kanban', href: '/', icon: Home },
-  { name: 'Contatos', href: '/contacts', icon: Users },
-  { name: 'Inteligência', href: '/dashboard', icon: BarChart3 },
-  { name: 'Histórico', href: '/history', icon: Clock },
-  { name: 'Deals Arquivados', href: '/deals/history', icon: Archive },
-]
+  { name: "Kanban", href: "/", icon: Home },
+  { name: "Contatos", href: "/contacts", icon: Users },
+  { name: "Inteligência", href: "/dashboard", icon: BarChart3 },
+  { name: "Histórico", href: "/history", icon: Clock },
+  { name: "Deals Arquivados", href: "/deals/history", icon: Archive },
+];
 
 const erpNavigation = [
-  { name: 'Dashboard', href: '/erp/dashboard', icon: BarChart3 },
-  { name: 'Clientes', href: '/erp/clients', icon: UserCircle },
-  { name: 'Contratos', href: '/erp/contracts', icon: FileText },
-  { name: 'Financeiro', href: '/erp/financial', icon: DollarSign },
-  { name: 'Veículos', href: '/erp/vehicles', icon: Car },
-  { name: 'Instrutores', href: '/erp/instructors', icon: GraduationCap },
-  { name: 'Aulas', href: '/erp/lessons', icon: Calendar },
-  { name: 'Agenda Instrutores', href: '/erp/instructor-schedule', icon: CalendarClock },
-]
+  { name: "Dashboard", href: "/erp/dashboard", icon: BarChart3 },
+  { name: "Clientes", href: "/erp/clients", icon: UserCircle },
+  { name: "Contratos", href: "/erp/contracts", icon: FileText },
+  { name: "Financeiro", href: "/erp/financial", icon: DollarSign },
+  { name: "Aulas", href: "/erp/lessons", icon: Calendar },
+  {
+    name: "Agenda Instrutores",
+    href: "/erp/instructor-schedule",
+    icon: CalendarClock,
+  },
+  { name: "Relatórios", href: "/erp/reports", icon: PieChart },
+];
 
 export function Sidebar() {
-  const location = useLocation()
-  const { user, signOut } = useAuth()
+  const location = useLocation();
+  const { user, signOut } = useAuth();
 
   return (
     <div className="flex h-screen w-48 flex-col bg-slate-900 text-white border-r border-slate-800">
@@ -46,22 +63,22 @@ export function Sidebar() {
           </div>
           <div className="space-y-1">
             {crmNavigation.map((item) => {
-              const isActive = location.pathname === item.href
+              const isActive = location.pathname === item.href;
               return (
                 <Link
                   key={item.name}
                   to={item.href}
                   className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                     isActive
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/50'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                      ? "bg-blue-600 text-white shadow-lg shadow-blue-600/50"
+                      : "text-slate-400 hover:bg-slate-800 hover:text-white",
                   )}
                 >
                   <item.icon className="h-5 w-5" />
                   {item.name}
                 </Link>
-              )
+              );
             })}
           </div>
         </div>
@@ -75,22 +92,22 @@ export function Sidebar() {
           </div>
           <div className="space-y-1">
             {erpNavigation.map((item) => {
-              const isActive = location.pathname === item.href
+              const isActive = location.pathname === item.href;
               return (
                 <Link
                   key={item.name}
                   to={item.href}
                   className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                     isActive
-                      ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/50'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                      ? "bg-purple-600 text-white shadow-lg shadow-purple-600/50"
+                      : "text-slate-400 hover:bg-slate-800 hover:text-white",
                   )}
                 >
                   <item.icon className="h-5 w-5" />
                   {item.name}
                 </Link>
-              )
+              );
             })}
           </div>
         </div>
@@ -100,10 +117,10 @@ export function Sidebar() {
           <Link
             to="/settings"
             className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
-              location.pathname === '/settings'
-                ? 'bg-slate-700 text-white'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+              location.pathname === "/settings"
+                ? "bg-slate-700 text-white"
+                : "text-slate-400 hover:bg-slate-800 hover:text-white",
             )}
           >
             <Settings className="h-5 w-5" />
@@ -119,7 +136,9 @@ export function Sidebar() {
             {user?.email?.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 overflow-hidden">
-            <p className="truncate text-xs font-medium text-slate-300">{user?.email}</p>
+            <p className="truncate text-xs font-medium text-slate-300">
+              {user?.email}
+            </p>
           </div>
         </div>
         <Button
@@ -133,5 +152,5 @@ export function Sidebar() {
         </Button>
       </div>
     </div>
-  )
+  );
 }

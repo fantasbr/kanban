@@ -32,7 +32,7 @@ export function useBranding() {
 
       const { data, error } = await supabase
         .from('app_branding')
-        .update(updates)
+        .update(updates as never)
         .eq('id', brandingQuery.data.id)
         .select()
         .single()

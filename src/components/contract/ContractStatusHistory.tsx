@@ -6,10 +6,10 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 interface StatusHistoryEntry {
-  id: number
+  id: number | string
   old_status: string | null
   new_status: string
-  reason: string
+  reason?: string | null
   changed_by: string
   changed_at: string
 }

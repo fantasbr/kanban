@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
 import type { Receivable, Receipt } from '@/types/database'
+import type { ReceiptInsert, ReceivableUpdate } from '@/types/supabase-helpers'
 
 export function useReceivables() {
   const queryClient = useQueryClient()
@@ -9,7 +11,7 @@ export function useReceivables() {
   const receivablesQuery = useQuery({
     queryKey: ['receivables'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('erp_receivables')
         .select(`
           *,
@@ -33,7 +35,7 @@ export function useReceivables() {
     return useQuery({
       queryKey: ['receivables', 'status', status],
       queryFn: async () => {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('erp_receivables')
           .select(`
             *,
@@ -57,7 +59,7 @@ export function useReceivables() {
       queryFn: async () => {
         if (!clientId) return []
 
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('erp_receivables')
           .select(`
             *,
@@ -81,7 +83,7 @@ export function useReceivables() {
       queryFn: async () => {
         if (!contractId) return []
 
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('erp_receivables')
           .select('*')
           .eq('contract_id', contractId)
@@ -107,18 +109,98 @@ export function useReceivables() {
       paymentMethodId: number
       generateReceipt?: boolean
     }) => {
-      // Update receivable
-      const { data: receivableData, error: receivableError } = await supabase
-        .from('erp_receivables')
-        // @ts-expect-error - Supabase type inference issue
-        .update({
-          status: 'paid',
-          paid_date: new Date().toISOString().split('T')[0],
-          paid_amount: paidAmount,
-          payment_method_id: paymentMethodId,
-          updated_at: new Date().toISOString(),
+      // ✅ SEGURANÇA: Validação de entrada
+      if (!receivableId || receivableId <= 0 || !Number.isInteger(receivableId)) {
+        throw new Error('ID do recebível inválido')
+      }
+      
+      if (!paidAmount || paidAmount <= 0 || !Number.isFinite(paidAmount)) {
+        throw new Error('Valor pago deve ser maior que zero')
+      }
+      
+      if (!paymentMethodId || paymentMethodId <= 0 || !Number.isInteger(paymentMethodId)) {
+        throw new Error('Método de pagamento inválido')
+      }
+
+      // Generate receipt first if requested
+      let receiptData: Receipt | null = null
+      let receiptNumber = null
+      
+      if (generateReceipt) {
+        // Get receivable data for receipt creation
+        const { data: currentReceivable, error: receivableError } = await db
+          .from('erp_receivables')
+          .select('company_id, client_id, installment_number')
+          .eq('id', receivableId)
+          .single()
+
+        if (receivableError) {
+          logger.error('[markAsPaid] Erro ao buscar recebível', { receivableId, error: receivableError })
+          throw new Error('Não foi possível encontrar o recebível. Verifique se o ID está correto.')
+        }
+        
+        if (!currentReceivable) {
+          throw new Error('Recebível não encontrado')
+        }
+
+        // @ts-expect-error - Supabase RPC type inference issue
+        const { data: generatedNumber } = await db.rpc('generate_document_number', {
+          doc_type: 'receipt',
         })
+        receiptNumber = generatedNumber
+
+        // Temporário: TypeScript infere 'never' para currentReceivable
+        // TODO: Remover quando tipos Supabase forem regenerados
+        // @ts-ignore
+        const receiptDataToInsert: ReceiptInsert = {
+          company_id: (currentReceivable as any).company_id,
+          // @ts-ignore
+          client_id: (currentReceivable as any).client_id,
+          receivable_id: receivableId,
+          receipt_number: receiptNumber || '',
+          receipt_date: new Date().toISOString().split('T')[0],
+          amount: paidAmount,
+          payment_method_id: paymentMethodId,
+          // @ts-ignore
+          description: `Pagamento da parcela ${(currentReceivable as any).installment_number}`,
+          pdf_url: null,
+        }
+
+        const { error: receiptError, data: receipt } = await db
+          .insert('erp_receipts', receiptDataToInsert)
+          .select()
+          .single()
+
+        if (receiptError) {
+          logger.error('[markAsPaid] Erro ao gerar recibo', { receivableId, error: receiptError })
+          
+          // Mensagens específicas por tipo de erro
+          if (receiptError.code === '23505') {  // Unique violation
+            throw new Error('Número de recibo já existe')
+          }
+          
+          throw new Error('Erro ao gerar recibo. Tente novamente.')
+        }
+        receiptData = receipt as Receipt
+      }
+
+      // Single UPDATE with all fields including receipt_id (if generated)
+      const updateData: ReceivableUpdate = {
+        status: 'paid',
+        paid_date: new Date().toISOString().split('T')[0],
+        paid_amount: paidAmount,
+        payment_method_id: paymentMethodId,
+      }
+      
+      if (receiptData) {
+        updateData.receipt_id = receiptData.id
+      }
+
+      // ✅ SEGURANÇA: Previne race condition - só atualiza se status='pending'
+      const { data: receivableData, error: receivableError } = await db
+        .update('erp_receivables', updateData)
         .eq('id', receivableId)
+        .eq('status', 'pending')  // ✅ Só atualiza se ainda estiver pendente
         .select(`
           *,
           clients:erp_clients(id, full_name, cpf),
@@ -126,47 +208,16 @@ export function useReceivables() {
         `)
         .single()
 
-      if (receivableError) throw receivableError
-
-      // Generate receipt if requested
-      if (generateReceipt) {
-        // @ts-expect-error - Supabase RPC type inference issue
-        const { data: receiptNumber } = await supabase.rpc('generate_document_number', {
-          doc_type: 'receipt',
-        })
-
-        const{ error: receiptError, data: receiptData } = await supabase
-          .from('erp_receipts')
-          // @ts-expect-error - Supabase type inference issue
-          .insert({
-            // @ts-expect-error - Supabase type inference issue
-            company_id: receivableData.company_id,
-            // @ts-expect-error - Supabase type inference issue
-            client_id: receivableData.client_id,
-            receivable_id: receivableId,
-            receipt_number: receiptNumber,
-            receipt_date: new Date().toISOString().split('T')[0],
-            amount: paidAmount,
-            payment_method_id: paymentMethodId,
-            // @ts-expect-error - Supabase type inference issue
-            description: `Pagamento da parcela ${receivableData.installment_number}`,
-          })
-          .select()
-          .single()
-
-        if (receiptError) throw receiptError
-
-        // Update receivable with receipt_id
-        await supabase
-          .from('erp_receivables')
-          // @ts-expect-error - Supabase type inference issue
-          .update({ receipt_id: receiptData.id })
-          .eq('id', receivableId)
-
-        return { receivable: receivableData, receipt: receiptData }
+      if (receivableError) {
+        logger.error('[markAsPaid] Erro ao atualizar recebível', { receivableId, error: receivableError })
+        throw new Error('Erro ao atualizar recebível')
+      }
+      
+      if (!receivableData) {
+        throw new Error('Recebível já foi pago ou não existe')
       }
 
-      return { receivable: receivableData, receipt: null }
+      return { receivable: receivableData, receipt: receiptData }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['receivables'] })
@@ -179,10 +230,10 @@ export function useReceivables() {
     mutationFn: async () => {
       const today = new Date().toISOString().split('T')[0]
 
-      const { error } = await supabase
-        .from('erp_receivables')
-        // @ts-expect-error - Supabase type inference issue
-        .update({ status: 'overdue' })
+      const updateData: ReceivableUpdate = { status: 'overdue' }
+
+      const { error } = await db
+        .update('erp_receivables', updateData)
         .eq('status', 'pending')
         .lt('due_date', today)
 
@@ -196,12 +247,12 @@ export function useReceivables() {
   // Update receivable due date
   const updateReceivableDueDateMutation = useMutation({
     mutationFn: async ({ id, dueDate }: { id: number; dueDate: string }) => {
-      const { error } = await supabase
-        .from('erp_receivables')
-        // @ts-expect-error - Supabase type inference issue
-        .update({ due_date: dueDate })
-        .eq('id', id)
+      const updateData: ReceivableUpdate = { due_date: dueDate }
 
+      const { error } = await db
+        .update('erp_receivables', updateData)
+        .eq('id', id)
+        .eq('status', 'pending') // ✅ SEGURANÇA: Só atualiza se estiver pendente (previne race condition)
       if (error) throw error
     },
     onSuccess: () => {
@@ -235,7 +286,7 @@ export function useReceipts() {
   const receiptsQuery = useQuery({
     queryKey: ['receipts'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('erp_receipts')
         .select(`
           *,
@@ -257,7 +308,7 @@ export function useReceipts() {
       queryFn: async () => {
         if (!clientId) return []
 
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('erp_receipts')
           .select(`
             *,
@@ -281,7 +332,7 @@ export function useReceipts() {
       queryFn: async () => {
         if (!id) return null
 
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('erp_receipts')
           .select(`
             *,
@@ -301,11 +352,9 @@ export function useReceipts() {
 
   // Create manual receipt
   const createReceiptMutation = useMutation({
-    mutationFn: async (receipt: Omit<Receipt, 'id' | 'created_at' | 'clients' | 'companies' | 'payment_methods'>) => {
-      const { error, data } = await supabase
-        .from('erp_receipts')
-        // @ts-expect-error - Supabase type inference issue
-        .insert(receipt)
+    mutationFn: async (receipt: ReceiptInsert) => {
+      const { error, data } = await db
+        .insert('erp_receipts', receipt)
         .select()
         .single()
 

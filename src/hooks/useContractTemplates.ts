@@ -94,7 +94,7 @@ export function useContractTemplates() {
         if (itemsError) throw itemsError
 
         return {
-          ...template,
+          ...(template as ContractTemplate),
           items: items as TemplateItem[],
         } as TemplateWithItems
       },

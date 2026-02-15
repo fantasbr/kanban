@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,6 +24,8 @@ import {
   MapPin,
   Calendar,
   Building,
+  RefreshCcw,
+  Loader2,
 } from 'lucide-react'
 import type { Contact } from '@/types/database'
 import { useContactHistory } from '@/hooks/useContactHistory'
@@ -30,6 +33,9 @@ import { useChatwootUrl } from '@/hooks/useChatwootUrl'
 import { formatCurrency } from '@/lib/utils'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 
 interface ContactDetailsModalProps {
   contact: Contact | null
@@ -45,12 +51,44 @@ export function ContactDetailsModal({
   onEdit,
 }: ContactDetailsModalProps) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { chatwootUrl } = useChatwootUrl()
   const [activeTab, setActiveTab] = useState('info')
+  const [isSyncing, setIsSyncing] = useState(false)
   const { activeDeals, archivedDeals, client, contracts, isLoading, hasClient, hasContracts } =
     useContactHistory(contact?.id)
 
   if (!contact) return null
+
+  const handleSyncChatwoot = async () => {
+    if (!contact.phone) {
+      toast.error('O contato precisa ter um telefone para sincronizar.')
+      return
+    }
+
+    setIsSyncing(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-chatwoot-contact', {
+        body: { contact_id: contact.id },
+      })
+
+      if (error) throw error
+      if (!data.success) throw new Error(data.error || 'Erro desconhecido')
+
+      toast.success('Contato sincronizado com Chatwoot!')
+      queryClient.invalidateQueries({ queryKey: ['contacts'] })
+      onClose() // Fechar para atualizar ou manter aberto se a query atualizar automaticamente (o pai precisa passar o dado novo)
+      // Como o contact vem via prop, o ideal é fechar ou o pai ser reativo.
+      // O pai (Contacts.tsx) usa useContacts(). Se invalidarmos, ele busca de novo.
+      // Mas o modal recebe um objeto fixo 'selectedContact'.
+      // Então fechar é mais seguro para garantir refresh visual.
+    } catch (error) {
+      console.error('Erro ao sincronizar:', error)
+      toast.error('Erro ao sincronizar com Chatwoot. Verifique as configurações.')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -96,6 +134,9 @@ export function ContactDetailsModal({
             )}
             <div className="flex-1">
               <DialogTitle className="text-2xl">{contact.name}</DialogTitle>
+              <DialogDescription className="sr-only">
+                Detalhes completos e histórico do contato {contact.name}
+              </DialogDescription>
               <div className="flex flex-wrap gap-2 mt-2">
                 {contact.email && (
                   <div className="flex items-center gap-1 text-sm text-slate-600">
@@ -110,9 +151,28 @@ export function ContactDetailsModal({
                   </div>
                 )}
               </div>
-              <Badge variant="secondary" className="mt-2">
-                Chatwoot ID: {contact.chatwoot_id}
-              </Badge>
+              <div className="mt-2 flex items-center gap-2">
+                {contact.chatwoot_id ? (
+                  <Badge variant="secondary">
+                    Chatwoot ID: {contact.chatwoot_id}
+                  </Badge>
+                ) : (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="h-7 text-xs gap-1"
+                    onClick={handleSyncChatwoot}
+                    disabled={isSyncing}
+                  >
+                    {isSyncing ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCcw className="h-3 w-3" />
+                    )}
+                    Sincronizar Chatwoot
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </DialogHeader>
@@ -222,8 +282,7 @@ export function ContactDetailsModal({
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
-                              <h4 className="font-semibold text-slate-900">{deal.title}</h4>
-                              <div className="flex flex-wrap gap-2 mt-2">
+                              <div className="flex flex-wrap gap-2">
                                 <Badge variant="outline">{deal.crm_stages?.name || 'N/A'}</Badge>
                                 <Badge className={getPriorityColor(deal.priority)}>
                                   {deal.priority === 'high'
@@ -271,8 +330,7 @@ export function ContactDetailsModal({
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
-                              <h4 className="font-semibold text-slate-900">{deal.title}</h4>
-                              <div className="flex flex-wrap gap-2 mt-2">
+                              <div className="flex flex-wrap gap-2">
                                 <Badge variant="outline">{deal.crm_stages?.name || 'N/A'}</Badge>
                                 <Badge variant="secondary">Arquivado</Badge>
                               </div>

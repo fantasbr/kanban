@@ -8,8 +8,8 @@ interface PermissionGuardProps {
 }
 
 export function PermissionGuard({ require, children, fallback }: PermissionGuardProps) {
-  const { permissions, isLoading } = useAuth()
-
+  const { permissions, loading: isLoading } = useAuth()
+  
   if (isLoading) {
     return null
   }

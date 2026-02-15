@@ -2,6 +2,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type { Instructor } from '@/types/database'
 
+interface InstructorCompany {
+  company_id: number
+  companies: {
+    id: number
+    name: string
+  }
+}
+
 export function useInstructors() {
   const queryClient = useQueryClient()
 
@@ -19,7 +27,7 @@ export function useInstructors() {
 
       // Fetch companies for each instructor
       const instructorsWithCompanies = await Promise.all(
-        (instructors || []).map(async (instructor: any) => {
+        (instructors || []).map(async (instructor: Instructor) => {
           const { data: instructorCompanies } = await supabase
             .from('erp_instructor_companies')
             .select(`
@@ -29,7 +37,7 @@ export function useInstructors() {
             .eq('instructor_id', instructor.id)
 
           const companies = (instructorCompanies || [])
-            .map((ic: any) => ic.companies)
+            .map((ic: InstructorCompany) => ic.companies)
             .filter(Boolean)
 
           return {

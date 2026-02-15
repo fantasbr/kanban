@@ -1,17 +1,25 @@
-import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useLessons } from '@/hooks/useLessons'
 import { useClients } from '@/hooks/useClients'
 import { useContracts } from '@/hooks/useContracts'
 import { useInstructors } from '@/hooks/useInstructors'
 import { useVehicles } from '@/hooks/useVehicles'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Zap, Calendar } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { supabase } from '@/lib/supabase'
+import { ContractItem } from '@/types/database'
+
+interface ExtendedContractItem extends ContractItem {
+  available_credits: number
+}
 
 interface LessonCreateModalProps {
   open: boolean
@@ -33,99 +41,80 @@ export function LessonCreateModal({
   const { contracts } = useContracts()
   const { instructors } = useInstructors()
   const { vehicles } = useVehicles()
+  const navigate = useNavigate()
 
-  // Form state
-  const [selectedClient, setSelectedClient] = useState('')
-  const [selectedContract, setSelectedContract] = useState('')
-  const [selectedContractItem, setSelectedContractItem] = useState('')
+  const [selectedClient, setSelectedClient] = useState(prefilledClientId?.toString() || '')
+  const [selectedContract, setSelectedContract] = useState(prefilledContractId?.toString() || '')
+  const [selectedContractItem, setSelectedContractItem] = useState(prefilledContractItemId?.toString() || '')
+  const [schedulingMethod, setSchedulingMethod] = useState<'quick' | 'agenda' | null>(null)
   const [selectedInstructor, setSelectedInstructor] = useState('')
   const [selectedVehicle, setSelectedVehicle] = useState('')
   const [lessonDate, setLessonDate] = useState('')
   const [startTime, setStartTime] = useState('')
+  // Duration state removed as it was unused
   const [topic, setTopic] = useState('')
   const [location, setLocation] = useState('')
   const [notes, setNotes] = useState('')
 
   // Derived data
-  const [clientContracts, setClientContracts] = useState<any[]>([])
-  const [contractItems, setContractItems] = useState<any[]>([])
+  // clientContracts refactored to useMemo below
+  const [contractItems, setContractItems] = useState<ExtendedContractItem[]>([])
   const [availableCredits, setAvailableCredits] = useState<number>(0)
 
-  // Initialize with prefilled values when modal opens
-  useEffect(() => {
-    if (open && prefilledClientId) {
-      setSelectedClient(prefilledClientId.toString())
-    }
-    if (open && prefilledContractId) {
-      setSelectedContract(prefilledContractId.toString())
-    }
-    if (open && prefilledContractItemId) {
-      setSelectedContractItem(prefilledContractItemId.toString())
-    }
-  }, [open, prefilledClientId, prefilledContractId, prefilledContractItemId])
-
   // Filter contracts by selected client (only active contracts)
-  useEffect(() => {
+  // Filter contracts by selected client (only active contracts)
+  const clientContracts = useMemo(() => { // Changed to useMemo
     if (selectedClient) {
-      const filtered = contracts.filter(
+      return contracts.filter(
         c => c.client_id === parseInt(selectedClient) && c.status === 'active'
       )
-      setClientContracts(filtered)
-      // Only clear contract selection if it's not prefilled
-      if (!prefilledContractId) {
-        setSelectedContract('')
-        setSelectedContractItem('')
-      }
-    } else {
-      setClientContracts([])
     }
-  }, [selectedClient, contracts, prefilledContractId])
+    return []
+  }, [selectedClient, contracts])
+
+  // Reset contract selection when client changes (effect is okay here for side-effect reset)
+  // Reset contract selection logic is now in handleClientChange (onValueChange)
 
   // Load contract items when contract is selected (with catalog info)
   useEffect(() => {
     if (selectedContract) {
       const loadContractItems = async () => {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('erp_contract_items')
           .select(`
             *,
-            catalog_items:erp_contract_items_catalog(
-              is_lesson,
-              vehicle_category
-            )
+            catalog_items:erp_catalog_items(is_lesson, vehicle_category)
           `)
           .eq('contract_id', parseInt(selectedContract))
 
-        setContractItems(data || [])
+        if (!error && data) {
+          // Fetch available credits for each item
+          const itemsWithCredits = await Promise.all(
+            data.map(async (item: ContractItem) => {
+              const { data: credits } = await supabase
+                .rpc('get_available_credits', {
+                  p_contract_item_id: item.id
+                } as never)
+              return {
+                ...item,
+                available_credits: credits || 0
+              } as ExtendedContractItem
+            })
+          )
+          setContractItems(itemsWithCredits)
+        }
+
         // Only clear contract item selection if it's not prefilled
         if (!prefilledContractItemId) {
           setSelectedContractItem('')
         }
       }
       loadContractItems()
-    } else {
-      setContractItems([])
     }
   }, [selectedContract, prefilledContractItemId])
 
-  // Auto-select contract item based on vehicle category
-  useEffect(() => {
-    if (selectedVehicle && contractItems.length > 0 && !prefilledContractItemId) {
-      // Find the vehicle to get its category
-      const vehicle = vehicles.find(v => v.id === parseInt(selectedVehicle))
-      if (vehicle) {
-        // Find contract item that matches vehicle category
-        const matchingItem = contractItems.find((item: any) => 
-          item.catalog_items?.is_lesson === true &&
-          item.catalog_items?.vehicle_category === vehicle.category
-        )
-        
-        if (matchingItem) {
-          setSelectedContractItem(matchingItem.id.toString())
-        }
-      }
-    }
-  }, [selectedVehicle, contractItems, vehicles, prefilledContractItemId])
+  // Auto-select contract item moved to handleVehicleChange
+
 
   // Load available credits when contract item is selected
   useEffect(() => {
@@ -134,12 +123,10 @@ export function LessonCreateModal({
         const { data } = await supabase
           .rpc('get_available_credits', {
             p_contract_item_id: parseInt(selectedContractItem)
-          })
+          } as never)
         setAvailableCredits(data || 0)
       }
       loadCredits()
-    } else {
-      setAvailableCredits(0)
     }
   }, [selectedContractItem])
 
@@ -166,6 +153,7 @@ export function LessonCreateModal({
       setSelectedClient('')
       setSelectedContract('')
       setSelectedContractItem('')
+      setSchedulingMethod(null)
       setSelectedInstructor('')
       setSelectedVehicle('')
       setLessonDate('')
@@ -173,11 +161,23 @@ export function LessonCreateModal({
       setTopic('')
       setLocation('')
       setNotes('')
+      setContractItems([])
+      setAvailableCredits(0)
 
       onOpenChange(false)
     } catch (error) {
       console.error('Error creating lesson:', error)
     }
+  }
+
+  const handleOpenAgenda = () => {
+    const params = new URLSearchParams({
+      client: selectedClient,
+      contract: selectedContract,
+      item: selectedContractItem,
+    })
+    navigate(`/erp/agenda-instrutores?${params.toString()}`)
+    onOpenChange(false)
   }
 
   // Get minimum date (today)
@@ -188,6 +188,9 @@ export function LessonCreateModal({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Agendar Nova Aula</DialogTitle>
+          <DialogDescription>
+            Selecione o cliente, contrato e escolha como deseja agendar a aula
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -209,11 +212,20 @@ export function LessonCreateModal({
             )}
 
             <div className="grid gap-4">
+
+
               <div>
                 <Label htmlFor="client">Cliente *</Label>
                 <Select 
                   value={selectedClient} 
-                  onValueChange={setSelectedClient}
+                  onValueChange={(val) => {
+                    setSelectedClient(val)
+                    // Reset contract when client changes
+                    if (selectedContract !== '') setSelectedContract('')
+                    if (selectedContractItem !== '') setSelectedContractItem('')
+                    setContractItems([])
+                    setAvailableCredits(0)
+                  }}
                   disabled={!!prefilledClientId}
                 >
                   <SelectTrigger id="client">
@@ -249,49 +261,160 @@ export function LessonCreateModal({
                 </Select>
               </div>
 
-              <div>
-                <Label htmlFor="contractItem">Item do Contrato *</Label>
-                <Select 
-                  value={selectedContractItem} 
-                  onValueChange={setSelectedContractItem}
-                  disabled={!selectedContract}
-                >
-                  <SelectTrigger id="contractItem">
-                    <SelectValue placeholder="Selecione o item" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {contractItems.map((item) => (
-                      <SelectItem key={item.id} value={item.id.toString()}>
-                        {item.description} ({item.quantity} aulas)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedContractItem && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {availableCredits > 0 ? (
-                      <span className="text-green-600 font-medium">
-                        ✓ {availableCredits} aula{availableCredits !== 1 ? 's' : ''} disponível{availableCredits !== 1 ? 'is' : ''}
-                      </span>
-                    ) : (
-                      <span className="text-red-600 font-medium">
-                        ✗ Sem créditos disponíveis
-                      </span>
-                    )}
+              {/* Contract Items - Visual Credit Cards */}
+              {selectedContract && contractItems.length > 0 && (
+                <div>
+                  <Label>Selecione o Pacote de Aulas *</Label>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Escolha qual pacote usar para esta aula
                   </p>
-                )}
-              </div>
+                  
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {contractItems
+                      .filter((item) => {
+                        // Only show items with available credits
+                        const credits = item.available_credits || 0
+                        return credits > 0
+                      })
+                      .map((item) => {
+                        const isSelected = selectedContractItem === item.id.toString()
+                        const credits = item.available_credits || 0
+                        const total = item.quantity || 0
+                        const percentage = total > 0 ? (credits / total) * 100 : 0
+                        
+                        return (
+                          <Card
+                            key={item.id}
+                            className={`cursor-pointer transition-all ${
+                              isSelected
+                                ? 'border-primary bg-primary/5 shadow-md'
+                                : 'hover:border-primary/50 hover:shadow-sm'
+                            }`}
+                            onClick={() => setSelectedContractItem(item.id.toString())}
+                          >
+                            <CardContent className="p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                    isSelected ? 'border-primary bg-primary' : 'border-input'
+                                  }`}>
+                                    {isSelected && (
+                                      <div className="w-2 h-2 rounded-full bg-primary-foreground" />
+                                    )}
+                                  </div>
+                                  <span className="font-medium">{item.description}</span>
+                                </div>
+                                <Badge variant={credits > 3 ? 'default' : credits > 0 ? 'secondary' : 'destructive'}>
+                                  {credits} {credits === 1 ? 'aula' : 'aulas'}
+                                </Badge>
+                              </div>
+                              
+                              {/* Progress Bar */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                  <span>{credits} disponíveis</span>
+                                  <span>{total} total</span>
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full transition-all ${
+                                      percentage > 50 ? 'bg-green-500' :
+                                      percentage > 20 ? 'bg-yellow-500' :
+                                      'bg-red-500'
+                                    }`}
+                                    style={{ width: `${percentage}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )
+                      })}
+                  </div>
+                  
+                  {contractItems.filter((item) => (item.available_credits || 0) > 0).length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>Nenhum pacote com créditos disponíveis</p>
+                      <p className="text-sm mt-1">Compre aulas extras para continuar</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Step 2: Date & Time */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
-                2
+          {/* Step 1.5: Choose Scheduling Method (only show if contract item selected and no method chosen) */}
+          {selectedContractItem && availableCredits > 0 && !schedulingMethod && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+                  2
+                </div>
+                <h3 className="font-semibold">Como deseja agendar?</h3>
               </div>
-              <h3 className="font-semibold">Data e Horário</h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card 
+                  className="cursor-pointer hover:border-primary hover:shadow-md transition-all" 
+                  onClick={() => setSchedulingMethod('quick')}
+                >
+                  <CardHeader>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <Zap className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">Agendamento Rápido</CardTitle>
+                        <CardDescription className="text-xs mt-1">
+                          Preencha data e horário manualmente
+                        </CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      Ideal para agendamentos simples e rápidos
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card 
+                  className="cursor-pointer hover:border-primary hover:shadow-md transition-all"
+                  onClick={handleOpenAgenda}
+                >
+                  <CardHeader>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <Calendar className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">Visualizar Agenda</CardTitle>
+                        <CardDescription className="text-xs mt-1">
+                          Veja disponibilidade no calendário
+                        </CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      Veja horários disponíveis e evite conflitos
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
+          )}
+
+          {/* Step 2: Date & Time (only show if quick method selected) */}
+          {schedulingMethod === 'quick' && (
+            <>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+                    3
+                  </div>
+                  <h3 className="font-semibold">Data e Horário</h3>
+                </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
@@ -318,18 +441,17 @@ export function LessonCreateModal({
                 <p className="text-xs text-muted-foreground mt-1">
                   O horário de término será calculado automaticamente
                 </p>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Step 3: Instructor & Vehicle */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
-                3
-              </div>
-              <h3 className="font-semibold">Instrutor e Veículo</h3>
-            </div>
+              {/* Step 3: Instructor & Vehicle */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+                    4
+                  </div>
+                  <h3 className="font-semibold">Instrutor e Veículo</h3>
+                </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
@@ -350,7 +472,22 @@ export function LessonCreateModal({
 
               <div>
                 <Label htmlFor="vehicle">Veículo *</Label>
-                <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
+                <Select value={selectedVehicle} onValueChange={(val) => {
+                  setSelectedVehicle(val)
+                  // Auto-select contract item based on vehicle
+                  if (contractItems.length > 0 && !prefilledContractItemId) {
+                    const vehicle = vehicles.find(v => v.id === parseInt(val))
+                    if (vehicle) {
+                      const matchingItem = contractItems.find((item) => 
+                        item.catalog_items?.is_lesson === true &&
+                        item.catalog_items?.vehicle_category === vehicle.category
+                      )
+                      if (matchingItem) {
+                        setSelectedContractItem(matchingItem.id.toString())
+                      }
+                    }
+                  }
+                }}>
                   <SelectTrigger id="vehicle">
                     <SelectValue placeholder="Selecione o veículo" />
                   </SelectTrigger>
@@ -407,33 +544,79 @@ export function LessonCreateModal({
                 />
               </div>
             </div>
-          </div>
+                </div>
+              </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isCreating}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              disabled={
-                isCreating ||
-                !selectedContractItem ||
-                !selectedInstructor ||
-                !selectedVehicle ||
-                !lessonDate ||
-                !startTime ||
-                availableCredits <= 0
-              }
-            >
-              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Agendar Aula
-            </Button>
-          </DialogFooter>
+              {/* Step 4: Details (Optional) */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground text-sm font-semibold">
+                    5
+                  </div>
+                  <h3 className="font-semibold">Detalhes (Opcional)</h3>
+                </div>
+
+                <div className="grid gap-4">
+                  <div>
+                    <Label htmlFor="topic">Tópico da Aula</Label>
+                    <Input
+                      id="topic"
+                      placeholder="Ex: Baliza, Estacionamento, Baliza em L..."
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="location">Local de Encontro</Label>
+                    <Input
+                      id="location"
+                      placeholder="Ex: Auto Escola, Endereço do aluno..."
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="notes">Observações</Label>
+                    <Textarea
+                      id="notes"
+                      placeholder="Informações adicionais sobre a aula..."
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  disabled={isCreating}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    isCreating ||
+                    !selectedContractItem ||
+                    !selectedInstructor ||
+                    !selectedVehicle ||
+                    !lessonDate ||
+                    !startTime ||
+                    availableCredits <= 0
+                  }
+                >
+                  {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Agendar Aula
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </form>
       </DialogContent>
     </Dialog>

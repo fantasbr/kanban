@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { Vehicle, VehicleCompany } from '@/types/database'
+import type { Vehicle } from '@/types/database'
 
 export function useVehicles() {
   const queryClient = useQueryClient()
@@ -19,7 +19,7 @@ export function useVehicles() {
 
       // Fetch companies for each vehicle
       const vehiclesWithCompanies = await Promise.all(
-        (vehicles || []).map(async (vehicle: any) => {
+        ((vehicles || []) as Vehicle[]).map(async (vehicle) => {
           const { data: vehicleCompanies } = await supabase
             .from('erp_vehicle_companies')
             .select(`
@@ -28,8 +28,12 @@ export function useVehicles() {
             `)
             .eq('vehicle_id', vehicle.id)
 
-          const companies = (vehicleCompanies || [])
-            .map((vc: any) => vc.companies)
+          interface VehicleCompanyRow {
+            companies: { id: number; name: string } | null
+          }
+
+          const companies = ((vehicleCompanies || []) as unknown as VehicleCompanyRow[])
+            .map((vc) => vc.companies)
             .filter(Boolean)
 
           return {

@@ -15,6 +15,13 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { Copy, Key, Trash2, Plus, AlertCircle } from 'lucide-react'
+import type { MutationError } from '@/types/supabase-helpers'
+
+interface GenericAPIKeyData {
+  name: string
+  permissions: string[]
+  expiresInDays?: number
+}
 
 export function APIKeys() {
   const { apiKeys, isLoading, createAPIKey, deleteAPIKey, isDeleting } = useAPIKeys()
@@ -29,8 +36,9 @@ export function APIKeys() {
     try {
       await deleteAPIKey(id)
       toast.success('API Key deletada com sucesso')
-    } catch (error: any) {
-      toast.error('Erro ao deletar API Key: ' + error.message)
+    } catch (error: unknown) {
+      const err = error as MutationError
+      toast.error('Erro ao deletar API Key: ' + (err.message || 'Erro desconhecido'))
     }
   }
 
@@ -152,8 +160,9 @@ export function APIKeys() {
             const result = await createAPIKey(data)
             setNewApiKey(result.api_key)
             toast.success('API Key criada com sucesso!')
-          } catch (error: any) {
-            toast.error('Erro ao criar API Key: ' + error.message)
+          } catch (error: unknown) {
+            const err = error as MutationError
+            toast.error('Erro ao criar API Key: ' + (err.message || 'Erro desconhecido'))
           }
         }}
         newApiKey={newApiKey}
@@ -170,7 +179,7 @@ function CreateAPIKeyModal({
 }: {
   open: boolean
   onClose: () => void
-  onCreate: (data: any) => Promise<void>
+  onCreate: (data: GenericAPIKeyData) => Promise<void>
   newApiKey: string | null
 }) {
   const [name, setName] = useState('')

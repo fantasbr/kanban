@@ -1,8 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 import { authenticateRequest, requirePermission } from '../_shared/auth.ts'
 import { logRequest } from '../_shared/logger.ts'
-import type { ApiResponse } from '../_shared/types.ts'
+import type { ApiResponse, ApiKey } from '../_shared/types.ts'
 
 serve(async (req) => {
   const startTime = Date.now()
@@ -53,11 +54,12 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {
-    errorMessage = error.message
-    statusCode = error.message === 'Unauthorized' ? 401 : 
-                 error.message.startsWith('Forbidden') ? 403 : 500
+    const err = error as Error
+    errorMessage = err.message
+    statusCode = err.message === 'Unauthorized' ? 401 : 
+                 err.message.startsWith('Forbidden') ? 403 : 500
     
-    responseBody = { error: error.message }
+    responseBody = { error: err.message }
 
     return new Response(JSON.stringify(responseBody), {
       status: statusCode,
@@ -70,7 +72,7 @@ serve(async (req) => {
 // HANDLERS
 // ============================================
 
-async function handleDeals(req: Request, supabase: any, apiKey: any, path: string, method: string): Promise<ApiResponse> {
+async function handleDeals(req: Request, supabase: SupabaseClient, apiKey: ApiKey | null, path: string, method: string): Promise<ApiResponse> {
   const url = new URL(req.url)
 
   // GET /deals - Listar deals
@@ -154,7 +156,7 @@ async function handleDeals(req: Request, supabase: any, apiKey: any, path: strin
   throw new Error('Method not allowed')
 }
 
-async function handleContacts(req: Request, supabase: any, apiKey: any, path: string, method: string): Promise<ApiResponse> {
+async function handleContacts(req: Request, supabase: SupabaseClient, apiKey: ApiKey | null, path: string, method: string): Promise<ApiResponse> {
   const url = new URL(req.url)
 
   // GET /contacts - Listar contatos
@@ -217,7 +219,7 @@ async function handleContacts(req: Request, supabase: any, apiKey: any, path: st
   throw new Error('Method not allowed')
 }
 
-async function handlePipelines(req: Request, supabase: any, apiKey: any, path: string, method: string): Promise<ApiResponse> {
+async function handlePipelines(req: Request, supabase: SupabaseClient, apiKey: ApiKey | null, path: string, method: string): Promise<ApiResponse> {
   // GET /pipelines - Listar pipelines
   if (method === 'GET' && path === '/pipelines') {
     requirePermission(apiKey, 'crm:read')

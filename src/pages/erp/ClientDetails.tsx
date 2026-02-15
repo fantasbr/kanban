@@ -1,15 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, User, Phone, Mail, MapPin, FileText, Calendar, DollarSign, Edit, MessageCircle, FilePlus, Eye } from 'lucide-react'
 import { useChatwootUrl } from '@/hooks/useChatwootUrl'
 import { ContractDetailsModal } from '@/components/modals/ContractDetailsModal'
-import { ClientLessonsTab } from '@/components/clients/ClientLessonsTab'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
@@ -30,18 +28,52 @@ import { useContracts } from '@/hooks/useContracts'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { validateCPF } from '@/lib/validators'
-import type { Client, Contract } from '@/types/database'
+import { ContactEditModal } from '@/components/contacts/ContactEditModal'
+import { useContacts } from '@/hooks/useContacts'
+import { supabase } from '@/lib/supabase'
+import type { Client, Contract, Contact } from '@/types/database'
 
+// Component to display audit user information
+function AuditUserInfo({ userId, timestamp }: { userId: string; timestamp: string }) {
+  const [userName, setUserName] = useState<string>('Carregando...')
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data } = await supabase
+        .from('system_users')
+        .select('full_name')
+        .eq('id', userId)
+        .single<{ full_name: string }>()
+      
+      if (data) {
+        setUserName(data.full_name)
+      } else {
+        setUserName('Usuário desconhecido')
+      }
+    }
+    
+    fetchUser()
+  }, [userId])
+
+  return (
+    <p className="font-medium mt-1">
+      {userName} em {format(new Date(timestamp), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+    </p>
+  )
+}
 export function ClientDetails() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { chatwootUrl } = useChatwootUrl()
   const { clients, updateClient, isLoading: loadingClient, isUpdating } = useClients()
   const { contracts, isLoading: loadingContracts } = useContracts()
+  const { updateContact } = useContacts()
   
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isContactEditModalOpen, setIsContactEditModalOpen] = useState(false)
   const [isContractDetailsOpen, setIsContractDetailsOpen] = useState(false)
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
+  const [editingContact, setEditingContact] = useState<Contact | null>(null)
   const [cpfError, setCpfError] = useState('')
   const [formData, setFormData] = useState({
     full_name: '',
@@ -146,10 +178,20 @@ export function ClientDetails() {
     }).format(value)
   }
 
+  const handleEditContact = () => {
+    if (client?.contacts) {
+      setEditingContact(client.contacts as Contact)
+      setIsContactEditModalOpen(true)
+    }
+  }
+
   if (loadingClient || loadingContracts) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-slate-500">Carregando...</div>
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-slate-500">Carregando detalhes do cliente...</p>
+        </div>
       </div>
     )
   }
@@ -162,6 +204,9 @@ export function ClientDetails() {
       </div>
     )
   }
+
+  // Debug logs removed
+
 
   return (
     <div className="space-y-6">
@@ -219,16 +264,8 @@ export function ClientDetails() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="dados" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="dados">Dados</TabsTrigger>
-          <TabsTrigger value="aulas">Aulas</TabsTrigger>
-        </TabsList>
-
-        {/* Dados Tab */}
-        <TabsContent value="dados" className="space-y-0">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Client Details Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Client Info */}
         <div className="lg:col-span-2 space-y-6">
           {/* Dados Pessoais */}
@@ -399,7 +436,18 @@ export function ClientDetails() {
           {/* Contato */}
           {client.contacts && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold text-slate-900 mb-4">Contato</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-slate-900">Contato</h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEditContact}
+                  className="gap-2"
+                >
+                  <Edit className="h-3 w-3" />
+                  Editar
+                </Button>
+              </div>
               <div className="space-y-3">
                 {client.contacts.phone && (
                   <div className="flex items-center gap-2 text-sm">
@@ -411,6 +459,27 @@ export function ClientDetails() {
                   <div className="flex items-center gap-2 text-sm">
                     <Mail className="h-4 w-4 text-slate-400" />
                     <span className="truncate">{client.contacts.email}</span>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* Auditoria */}
+          {(client.created_by || client.updated_by) && (
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-slate-900 mb-4">Auditoria</h2>
+              <div className="space-y-3 text-sm">
+                {client.created_by && (
+                  <div>
+                    <span className="text-slate-500">Criado por:</span>
+                    <AuditUserInfo userId={client.created_by} timestamp={client.created_at} />
+                  </div>
+                )}
+                {client.updated_by && (
+                  <div>
+                    <span className="text-slate-500">Última modificação:</span>
+                    <AuditUserInfo userId={client.updated_by} timestamp={client.updated_at} />
                   </div>
                 )}
               </div>
@@ -478,8 +547,8 @@ export function ClientDetails() {
                               <p className="font-semibold text-sm">{contract.contract_number}</p>
                               <Eye className="h-3 w-3 text-slate-400" />
                             </div>
-                            <Badge className={`${statusColors[contract.status]} text-xs`}>
-                              {statusLabels[contract.status]}
+                            <Badge className={`${statusColors[contract.status as keyof typeof statusColors] || 'bg-gray-100 text-gray-700'} text-xs`}>
+                              {statusLabels[contract.status as keyof typeof statusLabels] || contract.status}
                             </Badge>
                           </div>
                           <p className="text-xs text-slate-500">
@@ -508,13 +577,6 @@ export function ClientDetails() {
           </Card>
         </div>
       </div>
-    </TabsContent>
-
-    {/* Aulas Tab */}
-    <TabsContent value="aulas">
-      <ClientLessonsTab clientId={client.id} />
-    </TabsContent>
-  </Tabs>
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
@@ -723,6 +785,17 @@ export function ClientDetails() {
           onOpenChange={setIsContractDetailsOpen}
         />
       )}
+
+      {/* Contact Edit Modal */}
+      <ContactEditModal
+        contact={editingContact}
+        open={isContactEditModalOpen}
+        onClose={() => setIsContactEditModalOpen(false)}
+        onSave={(contactId, updates) => {
+          updateContact({ contactId, updates })
+          setIsContactEditModalOpen(false)
+        }}
+      />
     </div>
   )
 }

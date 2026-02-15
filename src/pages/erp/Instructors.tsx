@@ -183,7 +183,7 @@ export function Instructors() {
         photo_url: formData.photo_url || null,
         is_active: true,
         lesson_duration_minutes: 60, // Default 60 minutes
-        weekly_schedule: undefined, // Can be configured later
+        weekly_schedule: null, // Can be configured later
       }
 
       if (editingInstructor) {
@@ -235,7 +235,7 @@ export function Instructors() {
       id: configuringInstructor.id,
       instructor: {
         lesson_duration_minutes: data.lesson_duration_minutes,
-        weekly_schedule: data.weekly_schedule || undefined,
+        weekly_schedule: data.weekly_schedule || null,
       },
       companyIds: configuringInstructor.companies?.map(c => c.id) || [],
     })

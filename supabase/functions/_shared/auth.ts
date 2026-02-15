@@ -1,9 +1,9 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import type { ApiKey } from './types.ts'
 
 export async function authenticateRequest(
   request: Request
-): Promise<{ apiKey: ApiKey | null; supabase: any }> {
+): Promise<{ apiKey: ApiKey | null; supabase: SupabaseClient }> {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''

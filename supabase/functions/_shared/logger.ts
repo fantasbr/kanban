@@ -1,11 +1,12 @@
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 export async function logRequest(
-  supabase: any,
+  supabase: SupabaseClient,
   apiKeyId: string | null,
   endpoint: string,
   method: string,
   statusCode: number,
   request: Request,
-  responseBody: any,
+  responseBody: unknown,
   error: string | null,
   durationMs: number
 ) {

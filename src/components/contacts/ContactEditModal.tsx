@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -49,7 +49,9 @@ export function ContactEditModal({ contact, open, onClose, onSave }: ContactEdit
       <DialogContent className="sm:max-w-[550px] bg-white">
         <DialogHeader className="border-b border-slate-200 pb-4">
           <DialogTitle className="text-2xl font-bold text-slate-900">Editar Contato</DialogTitle>
-          <p className="text-sm text-slate-500 mt-1">Atualize as informações do contato</p>
+          <DialogDescription className="text-sm text-slate-500 mt-1">
+            Atualize as informações do contato
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-6">

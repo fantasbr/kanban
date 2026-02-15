@@ -8,7 +8,7 @@ import { LessonStatusBadge } from '@/components/lessons/LessonStatusBadge'
 import { LessonCreateModal } from '@/components/lessons/LessonCreateModal'
 import { LessonDetailsModal } from '@/components/lessons/LessonDetailsModal'
 import { AddExtraCreditsModal } from '@/components/contracts/AddExtraCreditsModal'
-import type { Lesson } from '@/types/database'
+import type { Lesson, ContractStatus, Contract } from '@/types/database'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -25,7 +25,7 @@ export function ClientLessonsTab({ clientId }: ClientLessonsTabProps) {
 
   // Fetch all lessons for this client across all contracts
   const { data: lessons = [], isLoading } = useQuery({
-    queryKey: ['client-lessons', clientId],
+    queryKey: ['lessons', 'client', clientId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('erp_lessons')
@@ -175,7 +175,7 @@ export function ClientLessonsTab({ clientId }: ClientLessonsTabProps) {
           <CardContent className="p-6">
             <h3 className="text-lg font-semibold mb-4">Contratos Ativos</h3>
             <div className="space-y-3">
-              {activeContracts.map((contract: any) => (
+              {activeContracts.map((contract: Contract) => (
                 <div
                   key={contract.id}
                   className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50 transition-colors"
@@ -244,23 +244,23 @@ export function ClientLessonsTab({ clientId }: ClientLessonsTabProps) {
                       </td>
                       <td className="p-3">
                         <div className="text-sm">
-                          {(lesson.contract_items as any)?.contracts?.contract_number || '-'}
+                          {lesson.contract_items?.contracts?.contract_number || '-'}
                         </div>
                       </td>
                       <td className="p-3">
                         <div className="text-sm text-slate-600">
-                          {(lesson.contract_items as any)?.description || '-'}
+                          {lesson.contract_items?.description || '-'}
                         </div>
                       </td>
                       <td className="p-3">
-                        <div className="text-sm">{(lesson.instructors as any)?.full_name || '-'}</div>
+                        <div className="text-sm">{lesson.instructors?.full_name || '-'}</div>
                       </td>
                       <td className="p-3">
                         <div className="text-sm">
-                          {(lesson.vehicles as any)?.model || '-'}
+                          {lesson.vehicles?.model || '-'}
                         </div>
                         <div className="text-xs text-slate-500">
-                          {(lesson.vehicles as any)?.plate || '-'}
+                          {lesson.vehicles?.plate || '-'}
                         </div>
                       </td>
                       <td className="p-3">
@@ -277,6 +277,7 @@ export function ClientLessonsTab({ clientId }: ClientLessonsTabProps) {
 
       {/* Modals */}
       <LessonCreateModal
+        key={isCreateModalOpen ? 'open' : 'closed'}
         open={isCreateModalOpen}
         onOpenChange={setIsCreateModalOpen}
         prefilledClientId={clientId}
@@ -287,7 +288,7 @@ export function ClientLessonsTab({ clientId }: ClientLessonsTabProps) {
           lesson={selectedLesson}
           open={isDetailsModalOpen}
           onOpenChange={setIsDetailsModalOpen}
-          contractStatus={(selectedLesson.contract_items as any)?.contracts?.status}
+          contractStatus={selectedLesson.contract_items?.contracts?.status as ContractStatus}
         />
       )}
 

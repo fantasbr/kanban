@@ -41,7 +41,13 @@ export function StageColumn({ stage, deals, onEditDeal, onDeleteDeal }: StageCol
               </div>
             ) : (
               stageDeals.map((deal) => (
-                <DealCard key={deal.id} deal={deal} onEdit={onEditDeal} onDelete={onDeleteDeal} />
+                <DealCard 
+                  key={deal.id} 
+                  deal={deal} 
+                  baseProbability={stage.probability}
+                  onEdit={onEditDeal} 
+                  onDelete={onDeleteDeal} 
+                />
               ))
             )}
           </SortableContext>

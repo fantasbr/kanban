@@ -1,11 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
-import { AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
+import { CheckCircle, Loader2 } from 'lucide-react'
 import { useContacts } from '@/hooks/useContacts'
+import { supabase } from '@/lib/supabase'
+import { PhoneInput } from '@/components/ui/phone-input'
 
 interface ContactCreateModalProps {
   open: boolean
@@ -21,36 +24,78 @@ interface ContactCreateModalProps {
 }
 
 export function ContactCreateModal({ open, onClose, onCreate, mode = 'crm', onSuccess }: ContactCreateModalProps) {
+  const navigate = useNavigate()
   const [chatwootId, setChatwootId] = useState('')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
-  const [forceCreateNew, setForceCreateNew] = useState(false)
+
+  const [existingClient, setExistingClient] = useState<{ id: number; full_name: string; cpf: string } | null>(null)
   
   const { setPhoneSearchQuery, contactByPhone, isSearchingByPhone } = useContacts()
 
   // Debounce phone search
-  useEffect(() => {
-    if (!phone || phone.length < 10) {
-      setPhoneSearchQuery('')
-      return
-    }
-
-    const timer = setTimeout(() => {
-      setPhoneSearchQuery(phone)
-    }, 500) // 500ms debounce
-
-    return () => clearTimeout(timer)
-  }, [phone, setPhoneSearchQuery])
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handlePhoneChange = (value: string) => {
     setPhone(value)
-    setForceCreateNew(false) // Reset when phone changes
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+
+    if (!value || value.length < 10) {
+      setPhoneSearchQuery('')
+      setExistingClient(null)
+      return
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      setPhoneSearchQuery(value)
+    }, 500)
   }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, []) // Empty dependency array is correct for cleanup of ref
+
+  // Check if contact has existing client
+  useEffect(() => {
+    const checkExistingClient = async () => {
+      if (!contactByPhone) {
+        setExistingClient(null)
+        return
+      }
+
+      const { data: client } = await supabase
+        .from('erp_clients')
+        .select('id, full_name, cpf')
+        .eq('contact_id', contactByPhone.id)
+        .maybeSingle()
+
+      setExistingClient(client)
+    }
+
+    checkExistingClient()
+  }, [contactByPhone])
+
+
 
   const handleUseExisting = () => {
     if (contactByPhone && onSuccess) {
       onSuccess(contactByPhone.id)
+      handleClose()
+    }
+  }
+
+  const handleOpenClient = () => {
+    if (existingClient) {
+      navigate(`/erp/clients/${existingClient.id}`)
       handleClose()
     }
   }
@@ -89,13 +134,15 @@ export function ContactCreateModal({ open, onClose, onCreate, mode = 'crm', onSu
     setName('')
     setPhone('')
     setEmail('')
-    setForceCreateNew(false)
+
+    setExistingClient(null)
     setPhoneSearchQuery('')
     onClose()
   }
 
-  // Verificar se deve mostrar contato existente
-  const showExistingContact = contactByPhone && !forceCreateNew && phone.length >= 10
+  // Verificar se deve mostrar contato existente ou cliente existente
+  const showExistingClient = existingClient && phone.length >= 10
+  const showExistingContact = contactByPhone && !existingClient && phone.length >= 10
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -133,32 +180,56 @@ export function ContactCreateModal({ open, onClose, onCreate, mode = 'crm', onSu
           )}
 
           {/* Phone - Com validação */}
-          <div className="space-y-2">
-            <Label htmlFor="phone" className="text-sm font-semibold text-slate-700">
-              Telefone {mode === 'balcao' && <span className="text-red-500">*</span>}
-            </Label>
-            <div className="relative">
-              <Input
-                id="phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                placeholder="+55 11 99999-9999"
-                className="h-11 border-slate-300 focus:border-blue-500 focus:ring-blue-500"
-                required={mode === 'balcao'}
-              />
-              {isSearchingByPhone && (
-                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-blue-600" />
-              )}
-            </div>
+          <div className="relative">
+            <PhoneInput
+              value={phone}
+              onChange={handlePhoneChange}
+              required={mode === 'balcao'}
+              label={mode === 'balcao' ? 'Telefone' : 'Telefone (opcional)'}
+            />
+            {isSearchingByPhone && (
+              <Loader2 className="absolute right-3 top-8 h-4 w-4 animate-spin text-blue-600" />
+            )}
             {mode === 'balcao' && (
-              <p className="text-xs text-slate-500">
-                O sistema verificará se já existe um contato com este telefone
+              <p className="text-xs text-slate-500 mt-1">
+                O sistema verificará se já existe um contato ou cliente com este telefone
               </p>
             )}
           </div>
 
-          {/* Mostrar contato existente se encontrado */}
+          {/* Mostrar cliente existente se encontrado */}
+          {showExistingClient && (
+            <Card className="p-4 bg-green-50 border-green-200">
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div>
+                    <p className="font-semibold text-green-900">Cliente Encontrado!</p>
+                    <p className="text-sm text-green-700 mt-1">
+                      Já existe um cliente cadastrado com este telefone:
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 space-y-1">
+                    <p className="font-medium text-slate-900">{existingClient.full_name}</p>
+                    <p className="text-sm text-slate-600">CPF: {existingClient.cpf}</p>
+                    <p className="text-sm text-slate-600">{contactByPhone?.phone}</p>
+                    {contactByPhone?.email && (
+                      <p className="text-sm text-slate-600">{contactByPhone.email}</p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleOpenClient}
+                    className="w-full bg-green-600 hover:bg-green-700 mt-2"
+                  >
+                    Abrir Cliente
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Mostrar contato existente se encontrado (sem cliente) */}
           {showExistingContact && (
             <Card className="p-4 bg-blue-50 border-blue-200">
               <div className="flex items-start gap-3">
@@ -177,36 +248,14 @@ export function ContactCreateModal({ open, onClose, onCreate, mode = 'crm', onSu
                       <p className="text-sm text-slate-600">{contactByPhone.email}</p>
                     )}
                   </div>
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      size="sm"
-                      onClick={handleUseExisting}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700"
-                    >
-                      Usar Este Contato
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setForceCreateNew(true)}
-                      className="flex-1"
-                    >
-                      Criar Novo Mesmo Assim
-                    </Button>
-                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleUseExisting}
+                    className="w-full bg-blue-600 hover:bg-blue-700 mt-2"
+                  >
+                    Usar Este Contato
+                  </Button>
                 </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Alerta se forçar criação de novo */}
-          {forceCreateNew && contactByPhone && (
-            <Card className="p-3 bg-yellow-50 border-yellow-200">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
-                <p className="text-sm text-yellow-800">
-                  Você está criando um novo contato mesmo havendo um existente com este telefone.
-                </p>
               </div>
             </Card>
           )}
@@ -250,7 +299,8 @@ export function ContactCreateModal({ open, onClose, onCreate, mode = 'crm', onSu
             onClick={handleCreate}
             disabled={
               (mode === 'crm' ? (!chatwootId.trim() || !name.trim()) : (!name.trim() || !phone.trim())) ||
-              (!!showExistingContact && !forceCreateNew)
+              !!showExistingContact ||
+              !!showExistingClient
             }
             className="px-6 bg-blue-600 hover:bg-blue-700"
           >

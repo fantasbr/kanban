@@ -33,7 +33,6 @@ export function ContractStatusChangeModal({
   open,
   onOpenChange,
   currentStatus,
-  contractId,
   onStatusChange,
   isUpdating = false,
 }: ContractStatusChangeModalProps) {

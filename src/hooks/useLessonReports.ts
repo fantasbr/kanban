@@ -1,220 +1,319 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { LessonAudit } from '@/types/database'
 
-export function useLessonReports() {
-  // Get lesson audit logs
-  const auditLogsQuery = useQuery({
-    queryKey: ['lesson-audit'],
+export interface ReportFilters {
+  startDate: Date
+  endDate: Date
+  instructorId?: string | null
+  vehicleId?: string | null
+}
+
+export interface InstructorReportItem {
+  id: number
+  name: string
+  lessons_completed: number
+  lessons_no_show: number
+  lessons_scheduled: number
+  total_lessons: number
+  hours_worked: number
+  revenue: number
+}
+
+export interface VehicleReportItem {
+  id: number
+  plate: string
+  model: string
+  category: string
+  lessons_count: number
+  hours_used: number
+}
+
+export interface FinancialReportData {
+  total_revenue: number
+  chart_data: { date: string; amount: number }[]
+  transaction_count: number
+}
+
+export interface ClientReportItem {
+  id: number
+  name: string
+  total: number
+  completed: number
+  no_show: number
+  cancelled: number
+  attendance_rate: number
+}
+
+export function useLessonReports(filters: ReportFilters) {
+  const { startDate, endDate, instructorId, vehicleId } = filters
+  
+  // Format dates for Supabase queries
+  const startIso = startDate.toISOString().split('T')[0]
+  const endIso = endDate.toISOString().split('T')[0]
+
+  // 1. Relatório de Produtividade (Instrutores)
+  const instructorReportQuery = useQuery({
+    queryKey: ['report-instructor', startIso, endIso, instructorId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('erp_lesson_audit')
-        .select(`
-          *,
-          lessons:erp_lessons(
-            *,
-            contract_items:erp_contract_items(
-              contracts:erp_contracts(
-                clients:erp_clients(*)
-              )
-            )
-          )
-        `)
-        .order('performed_at', { ascending: false })
-        .limit(100)
-
-      if (error) throw error
-      return (data || []) as LessonAudit[]
-    },
-  })
-
-  // Get contract lesson summary (hours used vs contracted)
-  const contractSummaryQuery = useQuery({
-    queryKey: ['contract-lesson-summary'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('erp_contract_items')
-        .select(`
-          id,
-          contract_id,
-          description,
-          quantity,
-          contracts:erp_contracts(
-            contract_number,
-            clients:erp_clients(name)
-          )
-        `)
-
-      if (error) throw error
-
-      // For each contract item, get lesson statistics
-      const summaries = await Promise.all(
-        (data || []).map(async (item: any) => {
-          const { data: lessons } = await supabase
-            .from('erp_lessons')
-            .select('status, duration_minutes')
-            .eq('contract_item_id', item.id)
-
-          const scheduled = lessons?.filter(l => l.status === 'scheduled').length || 0
-          const completed = lessons?.filter(l => l.status === 'completed').length || 0
-          const noShow = lessons?.filter(l => l.status === 'no_show').length || 0
-          const cancelled = lessons?.filter(l => l.status === 'cancelled').length || 0
-
-          const hoursUsed = lessons
-            ?.filter(l => l.status !== 'cancelled')
-            .reduce((sum, l) => sum + l.duration_minutes, 0) / 60 || 0
-
-          return {
-            contract_item_id: item.id,
-            contract_number: item.contracts.contract_number,
-            client_name: item.contracts.clients.name,
-            description: item.description,
-            hours_contracted: item.quantity,
-            hours_used: hoursUsed,
-            hours_remaining: item.quantity - hoursUsed,
-            lessons_scheduled: scheduled,
-            lessons_completed: completed,
-            lessons_no_show: noShow,
-            lessons_cancelled: cancelled,
-            total_lessons: lessons?.length || 0
-          }
-        })
-      )
-
-      return summaries
-    },
-  })
-
-  // Get instructor summary (lessons given, attendance rate, etc)
-  const instructorSummaryQuery = useQuery({
-    queryKey: ['instructor-summary'],
-    queryFn: async () => {
-      const { data: instructors, error } = await supabase
+      let query = supabase
         .from('erp_instructors')
         .select('id, full_name, hourly_rate')
         .eq('is_active', true)
 
+      if (instructorId) {
+        query = query.eq('id', instructorId)
+      }
+
+      const { data: instructors, error } = await query
       if (error) throw error
 
-      const summaries = await Promise.all(
-        (instructors || []).map(async (instructor) => {
+      interface InstructorRow {
+        id: number
+        full_name: string
+        hourly_rate: number
+      }
+
+      const reportData = await Promise.all(
+        ((instructors || []) as unknown as InstructorRow[]).map(async (instructor) => {
           const { data: lessons } = await supabase
             .from('erp_lessons')
-            .select('status, duration_minutes')
+            .select('status, duration_minutes, lesson_date')
             .eq('instructor_id', instructor.id)
+            .gte('lesson_date', startIso)
+            .lte('lesson_date', endIso)
 
-          const completed = lessons?.filter(l => l.status === 'completed').length || 0
-          const noShow = lessons?.filter(l => l.status === 'no_show').length || 0
-          const scheduled = lessons?.filter(l => l.status === 'scheduled').length || 0
+          interface LessonRow {
+            status: string
+            duration_minutes: number
+            lesson_date: string
+          }
 
-          const totalLessons = completed + noShow
-          const attendanceRate = totalLessons > 0 ? (completed / totalLessons) * 100 : 0
+          const lessonsList = (lessons || []) as LessonRow[]
 
-          const hoursWorked = lessons
-            ?.filter(l => l.status === 'completed')
-            .reduce((sum, l) => sum + l.duration_minutes, 0) / 60 || 0
+          const completed = lessonsList.filter(l => l.status === 'completed').length
+          const noShow = lessonsList.filter(l => l.status === 'no_show').length
+          const scheduled = lessonsList.filter(l => l.status === 'scheduled').length
+          const total = completed + noShow + scheduled
 
-          const revenue = hoursWorked * instructor.hourly_rate
+          const hoursWorked = lessonsList
+            .filter(l => l.status === 'completed')
+            .reduce((sum, l) => sum + l.duration_minutes, 0) / 60
+
+          const estimatedRevenue = hoursWorked * instructor.hourly_rate
 
           return {
-            instructor_id: instructor.id,
-            instructor_name: instructor.full_name,
+            id: instructor.id,
+            name: instructor.full_name,
             lessons_completed: completed,
             lessons_no_show: noShow,
             lessons_scheduled: scheduled,
-            total_lessons: lessons?.length || 0,
-            attendance_rate: Math.round(attendanceRate),
-            hours_worked: hoursWorked,
-            estimated_revenue: revenue
+            total_lessons: total,
+            hours_worked: Math.round(hoursWorked * 10) / 10,
+            revenue: estimatedRevenue
           }
         })
       )
 
-      return summaries.sort((a, b) => b.lessons_completed - a.lessons_completed)
-    },
+      return reportData.sort((a, b) => b.lessons_completed - a.lessons_completed) as InstructorReportItem[]
+    }
   })
 
-  // Get KPIs for dashboard
-  const kpisQuery = useQuery({
-    queryKey: ['lesson-kpis'],
+  // 2. Relatório de Veículos
+  const vehicleReportQuery = useQuery({
+    queryKey: ['report-vehicle', startIso, endIso, vehicleId],
     queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0]
-      const thisMonth = new Date().toISOString().slice(0, 7) // YYYY-MM
+      let query = supabase
+        .from('erp_vehicles')
+        .select('id, plate, model, category')
+        .eq('is_active', true)
 
-      // Today's lessons
-      const { data: todayLessons } = await supabase
-        .from('erp_lessons')
-        .select('id, status')
-        .eq('lesson_date', today)
-        .neq('status', 'cancelled')
+      if (vehicleId) {
+        query = query.eq('id', vehicleId)
+      }
 
-      // Next 7 days lessons
-      const next7Days = new Date()
-      next7Days.setDate(next7Days.getDate() + 7)
-      const { data: upcomingLessons } = await supabase
-        .from('erp_lessons')
-        .select('id')
-        .gte('lesson_date', today)
-        .lte('lesson_date', next7Days.toISOString().split('T')[0])
-        .eq('status', 'scheduled')
+      const { data: vehicles, error } = await query
+      if (error) throw error
 
-      // This month's lessons
-      const { data: monthLessons } = await supabase
-        .from('erp_lessons')
-        .select('status')
-        .gte('lesson_date', `${thisMonth}-01`)
-        .lte('lesson_date', `${thisMonth}-31`)
+      interface VehicleRow {
+        id: number
+        plate: string
+        model: string
+        category: string
+      }
 
-      const completed = monthLessons?.filter(l => l.status === 'completed').length || 0
-      const noShow = monthLessons?.filter(l => l.status === 'no_show').length || 0
-      const total = completed + noShow
-      const attendanceRate = total > 0 ? (completed / total) * 100 : 0
+      const reportData = await Promise.all(
+        ((vehicles || []) as unknown as VehicleRow[]).map(async (vehicle) => {
+          const { data: lessons } = await supabase
+            .from('erp_lessons')
+            .select('status, duration_minutes')
+            .eq('vehicle_id', vehicle.id)
+            .gte('lesson_date', startIso)
+            .lte('lesson_date', endIso)
+            .eq('status', 'completed')
 
-      // Most active instructor this month
-      const { data: instructorStats } = await supabase
-        .from('erp_lessons')
+          interface LessonRow {
+            status: string
+            duration_minutes: number
+          }
+
+          const lessonsList = (lessons || []) as LessonRow[]
+          const lessonsCount = lessonsList.length
+          const hoursUsed = lessonsList.reduce((sum, l) => sum + l.duration_minutes, 0) / 60
+
+          return {
+            id: vehicle.id,
+            plate: vehicle.plate,
+            model: vehicle.model,
+            category: vehicle.category,
+            lessons_count: lessonsCount,
+            hours_used: Math.round(hoursUsed * 10) / 10
+          }
+        })
+      )
+
+      return reportData.sort((a, b) => b.lessons_count - a.lessons_count) as VehicleReportItem[]
+    }
+  })
+
+  // 3. Relatório Financeiro
+  const financialReportQuery = useQuery({
+    queryKey: ['report-financial', startIso, endIso],
+    queryFn: async () => {
+      const { data: receivables, error } = await supabase
+        .from('erp_receivables')
         .select(`
-          instructor_id,
-          instructors:erp_instructors(full_name)
+          amount,
+          paid_amount,
+          paid_date,
+          status,
+          payment_method_id,
+          description
         `)
-        .gte('lesson_date', `${thisMonth}-01`)
-        .lte('lesson_date', `${thisMonth}-31`)
-        .eq('status', 'completed')
+        .gte('paid_date', startIso)
+        .lte('paid_date', endIso)
+        .eq('status', 'paid')
 
-      const instructorCounts = instructorStats?.reduce((acc: any, lesson: any) => {
-        const id = lesson.instructor_id
-        acc[id] = (acc[id] || 0) + 1
+      if (error) throw error
+
+      interface ReceivableRow {
+        amount: number
+        paid_amount: number | null
+        paid_date: string | null
+        status: string
+        payment_method_id: number | null
+        description: string | null
+      }
+
+      const receivablesList = (receivables || []) as ReceivableRow[]
+
+      const totalRevenue = receivablesList.reduce((sum, r) => sum + (r.paid_amount || 0), 0)
+      
+      const revenueByDate = receivablesList.reduce((acc: Record<string, number>, r) => {
+        const date = r.paid_date
+        if (date) {
+            acc[date] = (acc[date] || 0) + (r.paid_amount || 0)
+        }
         return acc
       }, {})
 
-      const mostActiveInstructorId = instructorCounts
-        ? Object.keys(instructorCounts).reduce((a, b) =>
-            instructorCounts[a] > instructorCounts[b] ? a : b
-          )
-        : null
-
-      const mostActiveInstructor = mostActiveInstructorId
-        ? instructorStats?.find(l => l.instructor_id === parseInt(mostActiveInstructorId))?.instructors
-        : null
+      const chartData = Object.entries(revenueByDate).map(([date, amount]) => ({
+        date,
+        amount
+      })).sort((a, b) => a.date.localeCompare(b.date))
 
       return {
-        lessons_today: todayLessons?.length || 0,
-        upcoming_lessons: upcomingLessons?.length || 0,
-        attendance_rate: Math.round(attendanceRate),
-        most_active_instructor: mostActiveInstructor?.full_name || 'N/A'
+        total_revenue: totalRevenue,
+        chart_data: chartData,
+        transaction_count: receivablesList.length
+      } as FinancialReportData
+    }
+  })
+
+  // 4. Relatório de Clientes
+  const clientReportQuery = useQuery({
+    queryKey: ['report-client', startIso, endIso],
+    queryFn: async () => {
+      const { data: lessons, error } = await supabase
+        .from('erp_lessons')
+        .select(`
+          status,
+          contract_items:erp_contract_items(
+            contracts:erp_contracts(
+              client_id,
+              clients:erp_clients(id, full_name)
+            )
+          )
+        `)
+        .gte('lesson_date', startIso)
+        .lte('lesson_date', endIso)
+
+      if (error) throw error
+
+      interface ClientStat {
+        id: number
+        name: string
+        total: number
+        completed: number
+        no_show: number
+        cancelled: number
       }
-    },
+
+      const clientStats: Record<string, ClientStat> = {}
+
+      interface LessonWithClient {
+        status: string
+        contract_items: {
+          contracts: {
+            client_id: number
+            clients: {
+              id: number
+              full_name: string
+            } | null
+          } | null
+        } | null
+      }
+
+      const lessonsList = (lessons || []) as unknown as LessonWithClient[]
+
+      lessonsList.forEach((lesson) => {
+        const client = lesson.contract_items?.contracts?.clients
+        if (!client) return
+
+        if (!clientStats[client.id]) {
+          clientStats[client.id] = {
+            id: client.id,
+            name: client.full_name,
+            total: 0,
+            completed: 0,
+            no_show: 0,
+            cancelled: 0
+          }
+        }
+
+        clientStats[client.id].total++
+        if (lesson.status === 'completed') clientStats[client.id].completed++
+        if (lesson.status === 'no_show') clientStats[client.id].no_show++
+        if (lesson.status === 'cancelled') clientStats[client.id].cancelled++
+      })
+
+      return Object.values(clientStats).map((stat) => ({
+        ...stat,
+        attendance_rate: stat.total > 0 ? Math.round((stat.completed / stat.total) * 100) : 0
+      })).sort((a, b) => b.completed - a.completed).slice(0, 50) as ClientReportItem[]
+    }
   })
 
   return {
-    auditLogs: auditLogsQuery.data ?? [],
-    contractSummary: contractSummaryQuery.data ?? [],
-    instructorSummary: instructorSummaryQuery.data ?? [],
-    kpis: kpisQuery.data,
+    instructorReport: instructorReportQuery.data ?? [],
+    vehicleReport: vehicleReportQuery.data ?? [],
+    financialReport: financialReportQuery.data ?? { total_revenue: 0, chart_data: [], transaction_count: 0 },
+    clientReport: clientReportQuery.data ?? [],
     
-    isLoadingAudit: auditLogsQuery.isLoading,
-    isLoadingContracts: contractSummaryQuery.isLoading,
-    isLoadingInstructors: instructorSummaryQuery.isLoading,
-    isLoadingKPIs: kpisQuery.isLoading,
+    isLoading: 
+      instructorReportQuery.isLoading || 
+      vehicleReportQuery.isLoading || 
+      financialReportQuery.isLoading || 
+      clientReportQuery.isLoading
   }
 }
+

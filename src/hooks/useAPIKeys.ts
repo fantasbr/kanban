@@ -69,14 +69,14 @@ export function useAPIKeys() {
           key_prefix: apiKey.substring(0, 15), // 'sk_live_' + 8 chars
           permissions,
           expires_at: expiresAt,
-        })
+        } as never)
         .select()
         .single()
 
       if (error) throw error
 
       // Retornar a key completa (única vez que será exibida)
-      return { ...result, api_key: apiKey }
+      return { ...(result as ApiKey), api_key: apiKey }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
@@ -93,7 +93,7 @@ export function useAPIKeys() {
     }) => {
       const { error } = await supabase
         .from('api_keys')
-        .update(updates)
+        .update(updates as never)
         .eq('id', id)
 
       if (error) throw error

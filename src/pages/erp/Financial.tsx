@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DollarSign, Clock, CheckCircle, AlertCircle, Download, FileText, Search, MoreVertical, Receipt as ReceiptIcon } from 'lucide-react'
+import { logger } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -47,7 +48,7 @@ import type { Receivable, Contract, Receipt } from '@/types/database'
 import { toast } from 'sonner'
 
 export function Financial() {
-  const { receivables, markAsPaid, isLoading: loadingReceivables, isMarkingAsPaid } = useReceivables()
+  const { receivables, markAsPaid, isLoading: loadingReceivables, isMarkingAsPaid, updateOverdueStatus } = useReceivables()
   const { receipts, isLoading: loadingReceipts } = useReceipts()
   const { activeCompanies } = useCompanies()
   const { activePaymentMethods } = usePaymentMethods()
@@ -58,6 +59,9 @@ export function Financial() {
   const [searchQuery, setSearchQuery] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  // Filtros separados para os KPIs
+  const [kpiStartDate, setKpiStartDate] = useState('')
+  const [kpiEndDate, setKpiEndDate] = useState('')
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [selectedReceivable, setSelectedReceivable] = useState<Receivable | null>(null)
   const [contractModalOpen, setContractModalOpen] = useState(false)
@@ -70,6 +74,11 @@ export function Financial() {
     paid_value: '',
     notes: '',
   })
+
+  // Atualizar status de vencidos ao carregar a página
+  useEffect(() => {
+    updateOverdueStatus()
+  }, [updateOverdueStatus])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -112,7 +121,7 @@ export function Financial() {
         setReceiptActionsModalOpen(true)
       }
     } catch (error) {
-      console.error('Erro ao registrar pagamento:', error)
+      logger.error('Erro ao registrar pagamento:', error)
       toast.error('Erro ao registrar pagamento. Tente novamente.')
     }
   }
@@ -149,20 +158,36 @@ export function Financial() {
     return true
   })
 
-  // Calcular métricas
-  const totalPending = receivables
+  // Filtrar receivables para KPIs (usando filtros separados)
+  const kpiFilteredReceivables = receivables.filter((r) => {
+    // Date range filter for KPIs
+    if (kpiStartDate) {
+      const dueDate = parseISO(r.due_date)
+      const start = parseISO(kpiStartDate)
+      if (dueDate < start) return false
+    }
+    if (kpiEndDate) {
+      const dueDate = parseISO(r.due_date)
+      const end = parseISO(kpiEndDate)
+      if (dueDate > end) return false
+    }
+    return true
+  })
+
+  // Calcular métricas usando filtros de KPI
+  const totalPending = kpiFilteredReceivables
     .filter((r) => r.status === 'pending')
     .reduce((sum, r) => sum + r.amount, 0)
 
-  const totalOverdue = receivables
+  const totalOverdue = kpiFilteredReceivables
     .filter((r) => r.status === 'overdue')
     .reduce((sum, r) => sum + r.amount, 0)
 
-  const totalPaid= receivables
+  const totalPaid = kpiFilteredReceivables
     .filter((r) => r.status === 'paid')
     .reduce((sum, r) => sum + (r.paid_amount || 0), 0)
 
-  const totalReceivables = receivables.reduce((sum, r) => sum + r.amount, 0)
+  const totalReceivables = kpiFilteredReceivables.reduce((sum, r) => sum + r.amount, 0)
 
   if (loadingReceivables || loadingReceipts) {
     return (
@@ -223,6 +248,48 @@ export function Financial() {
             {receivables.filter((r) => r.status === 'paid').length} parcelas
           </p>
         </Card>
+      </div>
+
+      {/* KPI Date Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 pb-4 border-b">
+        <div className="flex-1">
+          <Label htmlFor="kpi-start-date" className="text-sm text-slate-600 mb-1.5 block">
+            Filtro KPIs - Data Inicial
+          </Label>
+          <Input
+            id="kpi-start-date"
+            type="date"
+            value={kpiStartDate}
+            onChange={(e) => setKpiStartDate(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        <div className="flex-1">
+          <Label htmlFor="kpi-end-date" className="text-sm text-slate-600 mb-1.5 block">
+            Filtro KPIs - Data Final
+          </Label>
+          <Input
+            id="kpi-end-date"
+            type="date"
+            value={kpiEndDate}
+            onChange={(e) => setKpiEndDate(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        {(kpiStartDate || kpiEndDate) && (
+          <div className="flex items-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setKpiStartDate('')
+                setKpiEndDate('')
+              }}
+              className="w-full sm:w-auto"
+            >
+              Limpar Filtro KPIs
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Filters and Search */}

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { useState, useEffect } from 'react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -7,10 +7,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useLessons } from '@/hooks/useLessons'
 import { LessonStatusBadge } from './LessonStatusBadge'
 import type { Lesson } from '@/types/database'
-import type { ContractStatus } from '@/types/contract'
+import type { ContractStatus } from '@/types/database'
 import { Calendar, Clock, User, Car, MapPin, FileText, Ban, XCircle, CheckCircle2, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { supabase } from '@/lib/supabase'
 
 interface LessonDetailsModalProps {
   lesson: Lesson | null
@@ -21,6 +22,7 @@ interface LessonDetailsModalProps {
 
 export function LessonDetailsModal({ lesson, open, onOpenChange, contractStatus = 'active' }: LessonDetailsModalProps) {
   const { cancelLesson, markNoShow, markCompleted, isCancelling, isMarkingNoShow, isMarkingCompleted } = useLessons()
+  const [scheduledByEmail, setScheduledByEmail] = useState<string | null>(null)
 
   // Action dialogs state
   const [showCancelDialog, setShowCancelDialog] = useState(false)
@@ -30,6 +32,33 @@ export function LessonDetailsModal({ lesson, open, onOpenChange, contractStatus 
   // Form state
   const [cancellationReason, setCancellationReason] = useState('')
   const [instructorNotes, setInstructorNotes] = useState('')
+
+  // Fetch user email when lesson changes
+  useEffect(() => {
+    async function fetchUserEmail() {
+      if (!lesson?.scheduled_by) {
+        setScheduledByEmail(null)
+        return
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('system_users')
+          .select('email, full_name')
+          .eq('id', lesson.scheduled_by)
+          .maybeSingle()
+
+        if (!error && data) {
+          const userData = data as { full_name: string; email: string }
+          setScheduledByEmail(userData.full_name || userData.email)
+        }
+      } catch (err) {
+        console.error('Error fetching user email:', err)
+      }
+    }
+
+    fetchUserEmail()
+  }, [lesson?.scheduled_by])
 
   if (!lesson) return null
 
@@ -78,6 +107,9 @@ export function LessonDetailsModal({ lesson, open, onOpenChange, contractStatus 
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes da Aula</DialogTitle>
+            <DialogDescription>
+              Visualize todas as informações da aula agendada
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
@@ -205,7 +237,12 @@ export function LessonDetailsModal({ lesson, open, onOpenChange, contractStatus 
 
             {/* Audit Info */}
             <div className="pt-4 border-t text-xs text-muted-foreground space-y-1">
-              <p>Agendada em {format(new Date(lesson.scheduled_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+              <p>
+                Agendada em {format(new Date(lesson.scheduled_at), "dd/MM/yyyy 'às' HH:mm")}
+                {scheduledByEmail && (
+                  <span> por {scheduledByEmail}</span>
+                )}
+              </p>
               {lesson.completed_at && (
                 <p>Concluída em {format(new Date(lesson.completed_at), "dd/MM/yyyy 'às' HH:mm")}</p>
               )}

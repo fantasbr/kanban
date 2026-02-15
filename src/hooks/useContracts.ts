@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import type { Contract, ContractItem } from '@/types/database'
+import type { ContractInsert, ContractUpdate, ContractItemInsert, ReceivableInsert } from '@/types/supabase-helpers'
+import { logger } from '@/lib/logger'
+import { isValidId, isValidString } from '@/utils/validators'
+
 
 export function useContracts() {
   const queryClient = useQueryClient()
@@ -9,7 +13,7 @@ export function useContracts() {
   const contractsQuery = useQuery({
     queryKey: ['contracts'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('erp_contracts')
         .select(`
           *,
@@ -32,7 +36,7 @@ export function useContracts() {
       queryFn: async () => {
         if (!clientId) return []
 
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('erp_contracts')
           .select(`
             *,
@@ -57,7 +61,7 @@ export function useContracts() {
       queryFn: async () => {
         if (!id) return null
 
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('erp_contracts')
           .select(`
             *,
@@ -83,7 +87,7 @@ export function useContracts() {
       queryFn: async () => {
         if (!contractId) return []
 
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('erp_contract_items')
           .select('*')
           .eq('contract_id', contractId)
@@ -100,7 +104,7 @@ export function useContracts() {
   const generateContractNumberMutation = useMutation({
     mutationFn: async () => {
       // Buscar o maior número de contrato existente
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('erp_contracts')
         .select('contract_number')
         .like('contract_number', 'CONT-%')
@@ -108,7 +112,7 @@ export function useContracts() {
         .limit(1)
 
       if (error) {
-        console.error('Erro ao buscar último contrato:', error)
+        logger.error('Erro ao buscar último contrato:', error)
         throw error
       }
 
@@ -145,57 +149,121 @@ export function useContracts() {
       contract: Omit<Contract, 'id' | 'created_at' | 'updated_at' | 'companies' | 'clients' | 'contract_types' | 'payment_methods'>
       items: Omit<ContractItem, 'id' | 'contract_id' | 'created_at'>[]
     }) => {
+      // ✅ SEGURANÇA: Validação de entrada completa
+      if (!isValidId(contract.company_id)) {
+        throw new Error('ID da empresa inválido')
+      }
+
+      if (!isValidId(contract.client_id)) {
+        throw new Error('ID do cliente inválido')
+      }
+
+      if (!contract.final_value || contract.final_value <= 0 || !Number.isFinite(contract.final_value)) {
+        throw new Error('Valor final deve ser maior que zero')
+      }
+
+      if (!contract.installments || contract.installments < 1 || !Number.isInteger(contract.installments)) {
+        throw new Error('Número de parcelas deve ser um inteiro maior ou igual a 1')
+      }
+
+      if (!items || items.length === 0) {
+        throw new Error('Contrato deve ter pelo menos um item')
+      }
+
+      // Validar datas
+      if (!contract.start_date) {
+        throw new Error('Data de início é obrigatória')
+      }
+
+      if (!contract.end_date) {
+        throw new Error('Data de término é obrigatória')
+      }
+
+      const startDate = new Date(contract.start_date)
+      const endDate = new Date(contract.end_date)
+      
+      if (isNaN(startDate.getTime())) {
+        throw new Error('Data de início inválida')
+      }
+
+      if (isNaN(endDate.getTime())) {
+        throw new Error('Data de término inválida')
+      }
+
+      if (endDate <= startDate) {
+        throw new Error('Data de término deve ser posterior à data de início')
+      }
+
       // Insert contract
-      const { data: contractData, error: contractError } = await supabase
-        .from('erp_contracts')
-        // @ts-expect-error - Supabase type inference issue
-        .insert(contract)
+      const { data: contractData, error: contractError } = await db
+        .insert('erp_contracts', contract as ContractInsert)
         .select()
         .single()
 
-      if (contractError) throw contractError
+      if (contractError) {
+        logger.error('[createContract] Erro ao inserir contrato', { contract, error: contractError })
+        throw new Error('Erro ao criar contrato. Verifique os dados e tente novamente.')
+      }
+
+      if (!contractData) {
+        throw new Error('Contrato não foi criado')
+      }
+
+      const contractId = (contractData as Contract).id
+
 
       // Insert items
       const itemsWithContractId = items.map((item) => ({
         ...item,
-        // @ts-expect-error - Supabase type inference issue
-        contract_id: contractData.id,
+        contract_id: contractId,
       }))
 
-      const { error: itemsError } = await supabase
-        .from('erp_contract_items')
-        // @ts-expect-error - Supabase type inference issue
-        .insert(itemsWithContractId)
+      const { error: itemsError } = await db
+        .insert('erp_contract_items', itemsWithContractId as ContractItemInsert[])
 
-      if (itemsError) throw itemsError
+      if (itemsError) {
+        logger.error('[createContract] Erro ao inserir itens', { contractId, error: itemsError })
+        throw new Error('Erro ao adicionar itens ao contrato')
+      }
+
 
       // Generate receivables based on installments
       if (contract.installments > 0) {
-        const installmentValue = contract.final_value / contract.installments
+        // ✅ SEGURANÇA: Arredondamento correto para evitar perda de centavos
+        const installmentValue = Math.floor((contract.final_value / contract.installments) * 100) / 100
+        const totalInstallments = installmentValue * contract.installments
+        const lastInstallmentAdjustment = contract.final_value - totalInstallments
+        
         const receivables = []
 
         for (let i = 0; i < contract.installments; i++) {
           const dueDate = new Date(contract.start_date)
           dueDate.setMonth(dueDate.getMonth() + i + 1)
 
+          const isLastInstallment = i === contract.installments - 1
+          const amount = isLastInstallment 
+            ? installmentValue + lastInstallmentAdjustment 
+            : installmentValue
+
           receivables.push({
-            // @ts-expect-error - Supabase type inference issue
-            contract_id: contractData.id,
+            contract_id: contractId,
             company_id: contract.company_id,
             client_id: contract.client_id,
             installment_number: i + 1,
             due_date: dueDate.toISOString().split('T')[0],
-            amount: installmentValue,
+            amount: amount,
             status: 'pending',
           })
         }
 
-        const { error: receivablesError } = await supabase
-          .from('erp_receivables')
-          // @ts-expect-error - Supabase type inference issue
-          .insert(receivables)
+        const { error: receivablesError } = await db
+          .insert('erp_receivables', receivables as ReceivableInsert[])
 
-        if (receivablesError) throw receivablesError
+
+        if (receivablesError) {
+          logger.error('[createContract] Erro ao gerar parcelas', { contractId, error: receivablesError })
+          throw new Error('Erro ao gerar parcelas do contrato')
+        }
       }
 
       return contractData as Contract
@@ -209,13 +277,36 @@ export function useContracts() {
   // Update contract
   const updateContractMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: number; updates: Partial<Contract> }) => {
-      const { error } = await supabase
-        .from('erp_contracts')
-        // @ts-expect-error - Supabase type inference issue
-        .update({ ...updates, updated_at: new Date().toISOString() })
+      // ✅ SEGURANÇA: Validação de entrada
+      if (!isValidId(id)) {
+        throw new Error('ID do contrato inválido')
+      }
+
+      // Prevenir sobrescrita de campos críticos
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { id: _, created_at: _created, companies: _companies, clients: _clients, contract_types: _types, payment_methods: _methods, ...safeUpdates } = updates as any
+
+      // Validar valores se estiverem presentes
+      if (safeUpdates.final_value !== undefined) {
+        if (safeUpdates.final_value <= 0 || !Number.isFinite(safeUpdates.final_value)) {
+          throw new Error('Valor final deve ser maior que zero')
+        }
+      }
+
+      if (safeUpdates.installments !== undefined) {
+        if (safeUpdates.installments < 1 || !Number.isInteger(safeUpdates.installments)) {
+          throw new Error('Número de parcelas deve ser um inteiro maior ou igual a 1')
+        }
+      }
+
+      const { error } = await db
+        .update('erp_contracts', { ...safeUpdates, updated_at: new Date().toISOString() } as ContractUpdate)
         .eq('id', id)
 
-      if (error) throw error
+      if (error) {
+        logger.error('[updateContract] Erro ao atualizar contrato', { id, updates: safeUpdates, error })
+        throw new Error('Erro ao atualizar contrato')
+      }
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] })
@@ -226,23 +317,39 @@ export function useContracts() {
   // Cancel contract
   const cancelContractMutation = useMutation({
     mutationFn: async (id: number) => {
-      // Update contract status
-      const { error: contractError } = await supabase
-        .from('erp_contracts')
-        // @ts-expect-error - Supabase type inference issue
-        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      // ✅ SEGURANÇA: Validação de entrada
+      if (!isValidId(id)) {
+        throw new Error('ID do contrato inválido')
+      }
+
+      // ✅ SEGURANÇA: Previne race condition - só cancela se status='active'
+      const { data: contractData, error: contractError } = await db
+        .update('erp_contracts', { status: 'cancelled', updated_at: new Date().toISOString() } as ContractUpdate)
         .eq('id', id)
+        .eq('status', 'active')  // ✅ Só cancela se estiver ativo
+        .select()
+        .single()
 
-      if (contractError) throw contractError
+      if (contractError) {
+        logger.error('[cancelContract] Erro ao cancelar contrato', { id, error: contractError })
+        throw new Error('Erro ao cancelar contrato')
+      }
 
-      // Delete pending receivables (status 'cancelled' doesn't exist in schema)
-      const { error: receivablesError } = await supabase
+      if (!contractData) {
+        throw new Error('Contrato já foi cancelado ou não existe')
+      }
+
+      // Delete pending receivables
+      const { error: receivablesError } = await db
         .from('erp_receivables')
         .delete()
         .eq('contract_id', id)
         .eq('status', 'pending')
 
-      if (receivablesError) throw receivablesError
+      if (receivablesError) {
+        logger.error('[cancelContract] Erro ao deletar parcelas pendentes', { id, error: receivablesError })
+        throw new Error('Erro ao cancelar parcelas do contrato')
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] })
@@ -261,17 +368,32 @@ export function useContracts() {
       newStatus: string
       reason: string 
     }) => {
-      const { error } = await supabase
-        .from('erp_contracts')
-        // @ts-expect-error - Supabase type inference issue
-        .update({ 
+      // ✅ SEGURANÇA: Validação de entrada
+      if (!isValidId(id)) {
+        throw new Error('ID do contrato inválido')
+      }
+
+      const validStatuses = ['active', 'cancelled', 'completed', 'suspended']
+      if (!newStatus || !validStatuses.includes(newStatus)) {
+        throw new Error(`Status inválido. Valores permitidos: ${validStatuses.join(', ')}`)
+      }
+
+      if (!isValidString(reason, 10)) {
+        throw new Error('Motivo deve ter pelo menos 10 caracteres')
+      }
+
+      const { error } = await db
+        .update('erp_contracts', { 
           status: newStatus,
-          status_change_reason: reason,
+          status_change_reason: reason.trim(),
           updated_at: new Date().toISOString() 
-        })
+        } as ContractUpdate)
         .eq('id', id)
 
-      if (error) throw error
+      if (error) {
+        logger.error('[updateContractStatus] Erro ao atualizar status', { id, newStatus, reason, error })
+        throw new Error('Erro ao atualizar status do contrato')
+      }
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] })
@@ -280,30 +402,9 @@ export function useContracts() {
     },
   })
 
-  // Fetch contract status history
-  const useContractStatusHistory = (contractId: number | undefined) => {
-    return useQuery({
-      queryKey: ['contract-status-history', contractId],
-      queryFn: async () => {
-        if (!contractId) return []
+  // NOTE: Contract status history is now tracked via erp_audit_log
+  // Use useContractsAudit hook instead for contract audit history
 
-        const { data, error } = await supabase
-          .from('erp_contract_status_history')
-          .select('*')
-          .eq('contract_id', contractId)
-          .order('changed_at', { ascending: false })
-
-        if (error) throw error
-        
-        // Return data with UUID as changed_by (will be displayed in UI)
-        return (data || []).map((item: any) => ({
-          ...item,
-          changed_by: item.changed_by || 'Sistema'
-        }))
-      },
-      enabled: !!contractId,
-    })
-  }
 
   return {
     contracts: contractsQuery.data ?? [],
@@ -322,6 +423,6 @@ export function useContracts() {
     useContract,
     useContractsByClient,
     useContractItems,
-    useContractStatusHistory,
+    // useContractStatusHistory removed - use useContractsAudit instead
   }
 }

@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -16,12 +16,42 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Progress } from '@/components/ui/progress'
+import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import type { Deal, Priority, Stage } from '@/types/database'
-import { formatCurrency } from '@/lib/utils'
-import { ExternalLink, Calendar } from 'lucide-react'
-import { useDealTitles } from '@/hooks/useDealTitles'
+import { 
+  ExternalLink, 
+  Calendar, 
+  Building2, 
+  User, 
+  FileText, 
+  Mail, 
+  Phone,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  Save,
+  Edit2,
+  Trash2,
+  Plus
+} from 'lucide-react'
 import { useChatwootUrl } from '@/hooks/useChatwootUrl'
+import { useDealItems } from '@/hooks/useDealItems'
+import { useTemplates } from '@/hooks/useTemplates'
+import { useCatalogItems } from '@/hooks/useCatalogItems'
+import { formatCurrency } from '@/lib/utils/currency'
+import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
+
+interface ContractTemplateItemWithCatalogType {
+  description: string | null
+  quantity: number
+  catalog_item_id: number | null
+  catalog_item?: {
+    name: string
+    default_unit_price: number
+  } | null
+}
 
 interface DealEditModalProps {
   deal: Deal | null
@@ -31,249 +61,695 @@ interface DealEditModalProps {
   onSave: (dealId: string, updates: Partial<Deal>) => void
 }
 
-const priorityOptions: { value: Priority; label: string; variant: 'default' | 'secondary' | 'destructive' }[] = [
-  { value: 'low', label: 'Baixa', variant: 'secondary' },
-  { value: 'medium', label: 'Média', variant: 'default' },
-  { value: 'high', label: 'Alta', variant: 'destructive' },
+const priorityOptions: { value: Priority; label: string; color: string }[] = [
+  { value: 'low', label: 'Baixa', color: 'bg-slate-100 text-slate-700' },
+  { value: 'medium', label: 'Média', color: 'bg-blue-100 text-blue-700' },
+  { value: 'high', label: 'Alta', color: 'bg-red-100 text-red-700' },
 ]
 
 export function DealEditModal({ deal, stages, open, onClose, onSave }: DealEditModalProps) {
   const { chatwootUrl } = useChatwootUrl()
-  const { data: dealTitles, isLoading: isLoadingTitles } = useDealTitles()
-  const [title, setTitle] = useState('')
-  const [dealValue, setDealValue] = useState('')
+  const { items: dealItems, isLoading: itemsLoading, updateItem, deleteItem, createItems } = useDealItems(deal?.id)
+  const { templates } = useTemplates()
+  const { catalogItems } = useCatalogItems()
+  
   const [priority, setPriority] = useState<Priority>('medium')
+  const [notes, setNotes] = useState('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
+  const [editingItem, setEditingItem] = useState<number | null>(null)
+  const [editedQuantity, setEditedQuantity] = useState<number>(1)
+  const [editedUnitPrice, setEditedUnitPrice] = useState<number>(0)
+  
+  // States for adding new item
+  const [isAddingItem, setIsAddingItem] = useState(false)
+  const [newItemDescription, setNewItemDescription] = useState('')
+  const [newItemQuantity, setNewItemQuantity] = useState(1)
+  const [newItemUnitPrice, setNewItemUnitPrice] = useState(0)
+  const [newItemCatalogId, setNewItemCatalogId] = useState<number | null>(null)
 
   useEffect(() => {
     if (deal) {
-      setTitle(deal.title)
-      setDealValue(deal.deal_value_negotiated.toString())
       setPriority(deal.priority)
+      setNotes(deal.notes || '')
+      setSelectedTemplateId(deal.contract_template_id)
     }
   }, [deal])
+
+  // Handle template change
+  const handleTemplateChange = async (templateId: string) => {
+    if (!deal) return
+    
+    const newTemplateId = templateId === 'none' ? null : parseInt(templateId)
+    setSelectedTemplateId(newTemplateId)
+
+    // If template is selected, load its items
+    if (newTemplateId && templates) {
+      const selectedTemplate = templates.find(t => t.id === newTemplateId)
+      
+      if (selectedTemplate && confirm('Trocar o template irá substituir todos os itens atuais. Deseja continuar?')) {
+        try {
+          // Delete all current items
+          if (dealItems && dealItems.length > 0) {
+            await Promise.all(dealItems.map(item => deleteItem(item.id)))
+          }
+
+          // Load template items from the template
+          const { data: templateItems, error } = await supabase
+            .from('erp_contract_template_items')
+            .select(`
+              *,
+              catalog_item:erp_contract_items_catalog(*)
+            `)
+            .eq('template_id', newTemplateId)
+
+          if (error) throw error
+
+          if (templateItems && templateItems.length > 0) {
+            // Create new items from template
+            const newItems = templateItems.map((item: ContractTemplateItemWithCatalogType) => ({
+              description: item.catalog_item?.name || item.description || '',
+              quantity: item.quantity,
+              unit_price: item.catalog_item?.default_unit_price || 0,
+              total_price: item.quantity * (item.catalog_item?.default_unit_price || 0),
+              catalog_item_id: item.catalog_item_id,
+            }))
+
+            await createItems({ dealId: deal.id, items: newItems })
+            toast.success('Template trocado e itens atualizados!')
+          }
+        } catch (error) {
+          console.error('Error changing template:', error)
+          toast.error('Erro ao trocar template')
+        }
+      } else if (!selectedTemplate) {
+        // Just update the template ID without changing items
+        toast.info('Template removido')
+      }
+    }
+  }
 
   const handleSave = () => {
     if (!deal) return
 
+    // Calculate total from items
+    const calculatedTotal = dealItems?.reduce((sum, item) => sum + item.total_price, 0) || 0
+
     onSave(deal.id, {
-      title,
-      deal_value_negotiated: parseFloat(dealValue),
+      deal_value_negotiated: calculatedTotal,
       priority,
+      notes: notes || null,
+      contract_template_id: selectedTemplateId,
     })
     onClose()
   }
 
+  const toggleItemExpanded = (itemId: number) => {
+    const newExpanded = new Set(expandedItems)
+    if (newExpanded.has(itemId)) {
+      newExpanded.delete(itemId)
+    } else {
+      newExpanded.add(itemId)
+    }
+    setExpandedItems(newExpanded)
+  }
+
+  const startEditingItem = (itemId: number, quantity: number, unitPrice: number) => {
+    setEditingItem(itemId)
+    setEditedQuantity(quantity)
+    setEditedUnitPrice(unitPrice)
+  }
+
+  const saveItemEdit = async (itemId: number) => {
+    try {
+      await updateItem({
+        itemId,
+        updates: {
+          quantity: editedQuantity,
+          unit_price: editedUnitPrice,
+          total_price: editedQuantity * editedUnitPrice,
+        },
+      })
+      setEditingItem(null)
+      toast.success('Item atualizado')
+    } catch {
+      toast.error('Erro ao atualizar item')
+    }
+  }
+
+  const cancelItemEdit = () => {
+    setEditingItem(null)
+  }
+
+  // Handle adding new item
+  const handleAddNewItem = async () => {
+    if (!deal || !newItemDescription.trim()) {
+      toast.error('Descrição é obrigatória')
+      return
+    }
+
+    try {
+      const newItem = {
+        description: newItemDescription.trim(),
+        quantity: newItemQuantity,
+        unit_price: newItemUnitPrice,
+        total_price: newItemQuantity * newItemUnitPrice,
+        catalog_item_id: newItemCatalogId,
+      }
+
+      await createItems({ dealId: deal.id, items: [newItem] })
+      
+      // Reset form
+      setNewItemDescription('')
+      setNewItemQuantity(1)
+      setNewItemUnitPrice(0)
+      setNewItemCatalogId(null)
+      setIsAddingItem(false)
+      
+      toast.success('Item adicionado com sucesso!')
+    } catch (error) {
+      console.error('Error adding item:', error)
+      toast.error('Erro ao adicionar item')
+    }
+  }
+
+  const cancelAddItem = () => {
+    setNewItemDescription('')
+    setNewItemQuantity(1)
+    setNewItemUnitPrice(0)
+    setNewItemCatalogId(null)
+    setIsAddingItem(false)
+  }
+
+  // Handle catalog item selection for new item
+  const handleCatalogItemSelect = (catalogItemId: string) => {
+    if (catalogItemId === 'none') {
+      setNewItemCatalogId(null)
+      return
+    }
+
+    const catalogItem = catalogItems?.find(item => item.id === parseInt(catalogItemId))
+    if (catalogItem) {
+      setNewItemCatalogId(catalogItem.id)
+      setNewItemDescription(catalogItem.name)
+      setNewItemUnitPrice(catalogItem.default_unit_price)
+    }
+  }
+
   if (!deal) return null
   
-  // Find the selected title's default value
-  const selectedDealTitle = dealTitles?.find(dt => dt.title === title)
-  const defaultValue = selectedDealTitle?.value_default
-  
-  // Calculate progress based on current stage position
+  // Calculate progress
   const currentStageIndex = stages.findIndex((s) => s.id === deal.stage_id)
-  const progressPercentage = stages.length > 0 ? ((currentStageIndex + 1) / stages.length) * 100 : 0
-  const currentStage = stages.find((s) => s.id === deal.stage_id)
+  const currentStage = stages[currentStageIndex]
 
-  // Format creation date
+  // Format dates
   const createdDate = new Date(deal.created_at).toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   })
 
-  // Format updated date
-  const updatedDate = new Date(deal.updated_at).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const totalItemsValue = dealItems?.reduce((sum, item) => sum + item.total_price, 0) || 0
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[550px] bg-white">
-        <DialogHeader className="border-b border-slate-200 pb-4">
-          <DialogTitle className="text-2xl font-bold text-slate-900">Editar Negócio</DialogTitle>
-          <DialogDescription className="text-sm text-slate-500 mt-1">
-            Atualize as informações do negócio
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-[1100px] max-h-[85vh] p-0 gap-0 bg-white overflow-hidden flex flex-col">
+        <DialogTitle className="sr-only">Detalhes do Negócio</DialogTitle>
+        <DialogDescription className="sr-only">
+          Visualize e edite as informações do negócio, incluindo contato, empresa, itens negociados e observações
+        </DialogDescription>
+        
+        {/* Gradient Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-3 shrink-0">
+          <h2 className="text-xl font-bold text-white">Detalhes do Negócio</h2>
+          <p className="text-blue-100 text-xs mt-0.5">Visualize e edite as informações</p>
+        </div>
 
-        <div className="space-y-6 py-6">
-          {/* Progress Bar */}
-          <div className="space-y-3 pb-4 border-b border-slate-100">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold text-slate-700">Progresso no Pipeline</Label>
-              <span className="text-sm font-medium text-blue-600">
-                {currentStageIndex + 1} de {stages.length}
-              </span>
-            </div>
-            <Progress value={progressPercentage} className="h-2" />
-            <div className="flex items-center justify-between text-xs text-slate-500">
-              <span>{stages[0]?.name || 'Início'}</span>
-              <span className="font-semibold text-slate-700">{currentStage?.name}</span>
-              <span>{stages[stages.length - 1]?.name || 'Fim'}</span>
-            </div>
-          </div>
+        {/* Split View Content */}
+        <div className="flex flex-1 min-h-0">
+          {/* Left Panel - Contact & Info (40%) */}
+          <div className="w-[40%] border-r border-slate-200 bg-slate-50 p-4 overflow-y-auto">
+            {/* Contact Card */}
+            {deal.contacts && (
+              <Card className="p-4 bg-white">
+                <div className="flex flex-col items-center text-center">
+                  {/* Avatar */}
+                  <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mb-3 ring-4 ring-blue-100">
+                    <User className="h-10 w-10 text-white" />
+                  </div>
+                  
+                  {/* Name */}
+                  <h3 className="text-lg font-bold text-slate-900 mb-1">
+                    {deal.contacts.name}
+                  </h3>
+                  
+                  {/* Contact Details */}
+                  <div className="space-y-1.5 mt-3 w-full">
+                    {deal.contacts.phone && (
+                      <div className="flex items-center gap-2 text-xs text-slate-600 justify-center">
+                        <Phone className="h-3.5 w-3.5" />
+                        <span>{deal.contacts.phone}</span>
+                      </div>
+                    )}
+                    {deal.contacts.email && (
+                      <div className="flex items-center gap-2 text-xs text-slate-600 justify-center">
+                        <Mail className="h-3.5 w-3.5" />
+                        <span className="truncate">{deal.contacts.email}</span>
+                      </div>
+                    )}
+                  </div>
 
-          {/* Contact Info */}
-          {deal.contacts && (
-            <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
-              {deal.contacts.profile_url ? (
-                <img
-                  src={deal.contacts.profile_url}
-                  alt={deal.contacts.name}
-                  className="w-12 h-12 rounded-full object-cover border-2 border-blue-100"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-lg font-bold">
-                  {deal.contacts.name.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div className="flex-1">
-                <p className="font-semibold text-slate-900">{deal.contacts.name}</p>
-                {deal.contacts.phone && (
-                  <p className="text-sm text-slate-500">{deal.contacts.phone}</p>
-                )}
-              </div>
-              {deal.chatwoot_conversation_id && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    window.open(
-                      `${chatwootUrl}/app/accounts/1/conversations/${deal.chatwoot_conversation_id}`,
-                      '_blank'
-                    )
-                  }}
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Chatwoot
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* Created and Updated Dates */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 rounded-lg p-3">
-              <Calendar className="h-4 w-4 text-slate-400" />
-              <div className="flex flex-col">
-                <span className="text-xs text-slate-500">Criado em</span>
-                <span className="font-medium">{createdDate}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
-              <Calendar className="h-4 w-4 text-blue-500" />
-              <div className="flex flex-col">
-                <span className="text-xs text-blue-600">Última alteração</span>
-                <span className="font-medium text-blue-700">{updatedDate}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Form Fields */}
-          <div className="space-y-4">
-            {/* Title */}
-            <div className="space-y-2">
-              <Label htmlFor="title" className="text-sm font-semibold text-slate-700">
-                Título do Negócio <span className="text-red-500">*</span>
-              </Label>
-              <Select value={title} onValueChange={setTitle}>
-                <SelectTrigger id="title" className="h-11 border-slate-300">
-                  <SelectValue placeholder="Selecione o título do negócio" />
-                </SelectTrigger>
-                <SelectContent position="popper" sideOffset={5} className="bg-white border-slate-200">
-                  {isLoadingTitles ? (
-                    <div className="p-2 text-sm text-slate-500">Carregando...</div>
-                  ) : dealTitles && dealTitles.length > 0 ? (
-                    dealTitles.map((dealTitle) => (
-                      <SelectItem key={dealTitle.id} value={dealTitle.title}>
-                        {dealTitle.title}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <div className="p-2 text-sm text-slate-500">
-                      Nenhum título cadastrado. Configure em Configurações.
-                    </div>
+                  {/* Chatwoot Link */}
+                  {deal.contacts.chatwoot_id && chatwootUrl && (
+                    <a
+                      href={`${chatwootUrl}/app/accounts/1/conversations/${deal.chatwoot_conversation_id || deal.contacts.chatwoot_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 mt-3 font-medium"
+                    >
+                      Ver no Chatwoot
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
                   )}
-                </SelectContent>
-              </Select>
-              {defaultValue && (
-                <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                  <svg className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="text-sm text-blue-700">
-                    Valor padrão deste título: <strong>{formatCurrency(defaultValue)}</strong>
-                  </span>
                 </div>
-              )}
-            </div>
+              </Card>
+            )}
 
-            {/* Deal Value */}
-            <div className="space-y-2">
-              <Label htmlFor="deal-value" className="text-sm font-semibold text-slate-700">
-                Valor Negociado <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="deal-value"
-                type="number"
-                step="0.01"
-                value={dealValue}
-                onChange={(e) => setDealValue(e.target.value)}
-                placeholder="0.00"
-                className="h-11 border-slate-300 focus:border-blue-500 focus:ring-blue-500"
-              />
-              <p className="text-sm text-slate-500">
-                Valor atual: <span className="font-semibold text-blue-600">{formatCurrency(deal.deal_value_negotiated)}</span>
-              </p>
-            </div>
+            {/* Company Badge */}
+            {deal.companies && (
+              <Card className="p-3 bg-white mt-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <Building2 className="h-4 w-4 text-slate-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium">Empresa</p>
+                    <p className="font-semibold text-sm text-slate-900">{deal.companies.name}</p>
+                  </div>
+                </div>
+              </Card>
+            )}
 
-            {/* Priority */}
-            <div className="space-y-2">
-              <Label htmlFor="priority" className="text-sm font-semibold text-slate-700">
-                Prioridade
-              </Label>
-              <Select value={priority} onValueChange={(value) => setPriority(value as Priority)}>
-                <SelectTrigger id="priority" className="h-11 border-slate-300">
-                  <SelectValue placeholder="Selecione a prioridade" />
-                </SelectTrigger>
-                <SelectContent position="popper" sideOffset={5} className="bg-white border-slate-200">
-                  {priorityOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
+            {/* Pipeline Stage */}
+            <Card className="p-3 bg-white mt-3">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-700">Pipeline</span>
+                  <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
+                    {currentStageIndex + 1} de {stages.length}
+                  </Badge>
+                </div>
+                
+                {/* Stage Indicator */}
+                <div className="flex items-center gap-2">
+                  {stages.map((stage, idx) => (
+                    <div
+                      key={stage.id}
+                      className={`h-2 flex-1 rounded-full transition-colors ${
+                        idx <= currentStageIndex
+                          ? 'bg-blue-500'
+                          : 'bg-slate-200'
+                      }`}
+                    />
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
+                </div>
+                
+                <p className="text-sm font-medium text-slate-900">
+                  {currentStage?.name}
+                </p>
+              </div>
+            </Card>
 
             {/* AI Summary */}
             {deal.ai_summary && (
+              <Card className="p-3 bg-purple-50 border-purple-200 mt-3">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-medium text-purple-600 mb-1">Resumo IA</p>
+                    <p className="text-xs text-purple-900 leading-relaxed">{deal.ai_summary}</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Metadata */}
+            <div className="mt-4 space-y-1.5 text-xs text-slate-500">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-3 w-3" />
+                <span>Criado em {createdDate}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Panel - Items & Edit (60%) */}
+          <div className="w-[60%] flex flex-col min-h-0">
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Template Selector */}
               <div className="space-y-2">
-                <Label className="text-sm font-semibold text-slate-700">Resumo da IA</Label>
-                <div className="rounded-lg bg-blue-50 border border-blue-100 p-4 text-sm text-slate-700">
-                  {deal.ai_summary}
+                <Label htmlFor="template-select" className="text-sm font-medium text-slate-700">
+                  Template de Contrato
+                </Label>
+                <Select
+                  value={selectedTemplateId?.toString() || 'none'}
+                  onValueChange={handleTemplateChange}
+                >
+                  <SelectTrigger id="template-select" className="h-10">
+                    <SelectValue placeholder="Selecione um template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum template</SelectItem>
+                    {templates?.map((template) => (
+                      <SelectItem key={template.id} value={template.id.toString()}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                  Trocar o template irá substituir todos os itens atuais
+                </p>
+              </div>
+
+              {/* Negotiated Items */}
+              {!itemsLoading && dealItems && dealItems.length > 0 && (
+                <div className="space-y-2.5">
+                  <h3 className="font-semibold text-sm text-slate-900 flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-slate-600" />
+                    Itens Negociados
+                  </h3>
+                  
+                  <div className="space-y-2">
+                    {dealItems.map((item) => {
+                      const isExpanded = expandedItems.has(item.id)
+                      const isEditing = editingItem === item.id
+                      
+                      return (
+                        <Card
+                          key={item.id}
+                          className="overflow-hidden hover:shadow-md transition-shadow"
+                        >
+                          {/* Item Header */}
+                          <button
+                            onClick={() => toggleItemExpanded(item.id)}
+                            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex-1 text-left">
+                              <p className="font-medium text-slate-900">{item.description}</p>
+                              <div className="flex items-center gap-4 mt-1 text-sm text-slate-600">
+                                <span>Qtd: {item.quantity}</span>
+                                <span>•</span>
+                                <span>{formatCurrency(item.unit_price)}/un</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <p className="font-bold text-slate-900">{formatCurrency(item.total_price)}</p>
+                              {isExpanded ? (
+                                <ChevronUp className="h-5 w-5 text-slate-400" />
+                              ) : (
+                                <ChevronDown className="h-5 w-5 text-slate-400" />
+                              )}
+                            </div>
+                          </button>
+
+                          {/* Expanded Details */}
+                          {isExpanded && (
+                            <div className="px-4 pb-4 pt-2 bg-slate-50 border-t border-slate-200">
+                              {isEditing ? (
+                                /* Edit Mode */
+                                <div className="space-y-3">
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label className="text-xs">Quantidade</Label>
+                                      <Input
+                                        type="number"
+                                        min="1"
+                                        value={editedQuantity}
+                                        onChange={(e) => setEditedQuantity(parseInt(e.target.value) || 1)}
+                                        className="h-9 mt-1"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs">Valor Unitário</Label>
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={editedUnitPrice}
+                                        onChange={(e) => setEditedUnitPrice(parseFloat(e.target.value) || 0)}
+                                        className="h-9 mt-1"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-between pt-2 border-t">
+                                    <span className="text-sm font-medium">Total:</span>
+                                    <span className="text-lg font-bold text-blue-600">
+                                      {formatCurrency(editedQuantity * editedUnitPrice)}
+                                    </span>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() => saveItemEdit(item.id)}
+                                      className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                    >
+                                      <Save className="h-4 w-4 mr-1" />
+                                      Salvar
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={cancelItemEdit}
+                                      className="flex-1"
+                                    >
+                                      Cancelar
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                /* View Mode */
+                                <div className="space-y-3">
+                                  <div className="grid grid-cols-3 gap-4 text-sm">
+                                    <div>
+                                      <p className="text-slate-500 text-xs">Quantidade</p>
+                                      <p className="font-medium text-slate-900">{item.quantity}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-slate-500 text-xs">Valor Unitário</p>
+                                      <p className="font-medium text-slate-900">{formatCurrency(item.unit_price)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-slate-500 text-xs">Total</p>
+                                      <p className="font-medium text-slate-900">{formatCurrency(item.total_price)}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => startEditingItem(item.id, item.quantity, item.unit_price)}
+                                      className="flex-1"
+                                    >
+                                      <Edit2 className="h-4 w-4 mr-1" />
+                                      Editar
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        if (confirm('Tem certeza que deseja excluir este item?')) {
+                                          deleteItem(item.id)
+                                        }
+                                      }}
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </Card>
+                      )
+                    })}
+                  </div>
+
+                  {/* Add Item Form/Button */}
+                  {!isAddingItem ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsAddingItem(true)}
+                      className="w-full border-dashed border-2 hover:bg-blue-50 hover:border-blue-300"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Adicionar Item
+                    </Button>
+                  ) : (
+                    <Card className="p-4 bg-slate-50 border-2 border-blue-200">
+                      <h4 className="font-semibold text-sm text-slate-900 mb-3">Novo Item</h4>
+                      <div className="space-y-3">
+                        {/* Catalog Item Selector (Optional) */}
+                        <div>
+                          <Label className="text-xs">Item do Catálogo (Opcional)</Label>
+                          <Select
+                            value={newItemCatalogId?.toString() || 'none'}
+                            onValueChange={handleCatalogItemSelect}
+                          >
+                            <SelectTrigger className="h-9 mt-1">
+                              <SelectValue placeholder="Selecione do catálogo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nenhum (manual)</SelectItem>
+                              {catalogItems?.map((item) => (
+                                <SelectItem key={item.id} value={item.id.toString()}>
+                                  {item.name} - {formatCurrency(item.default_unit_price)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Description */}
+                        <div>
+                          <Label className="text-xs">Descrição *</Label>
+                          <Input
+                            value={newItemDescription}
+                            onChange={(e) => setNewItemDescription(e.target.value)}
+                            placeholder="Digite a descrição do item"
+                            className="h-9 mt-1"
+                          />
+                        </div>
+
+                        {/* Quantity and Unit Price */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs">Quantidade *</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={newItemQuantity}
+                              onChange={(e) => setNewItemQuantity(parseInt(e.target.value) || 1)}
+                              className="h-9 mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Valor Unitário *</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={newItemUnitPrice}
+                              onChange={(e) => setNewItemUnitPrice(parseFloat(e.target.value) || 0)}
+                              className="h-9 mt-1"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Total Preview */}
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <span className="text-sm font-medium">Total:</span>
+                          <span className="text-lg font-bold text-blue-600">
+                            {formatCurrency(newItemQuantity * newItemUnitPrice)}
+                          </span>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2 pt-2">
+                          <Button
+                            size="sm"
+                            onClick={handleAddNewItem}
+                            disabled={!newItemDescription.trim()}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            Adicionar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={cancelAddItem}
+                            className="flex-1"
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* Total Summary */}
+                  <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-700">Total dos Itens</span>
+                      <span className="text-2xl font-bold text-blue-600">
+                        {formatCurrency(totalItemsValue)}
+                      </span>
+                    </div>
+                  </Card>
+                </div>
+              )}
+
+              {/* Editable Fields */}
+              <div className="space-y-4 pt-4 border-t border-slate-200">
+                <h3 className="font-semibold text-slate-900">Editar Informações</h3>
+
+                {/* Priority */}
+                <div className="space-y-2">
+                  <Label htmlFor="priority" className="text-sm font-medium text-slate-700">
+                    Prioridade
+                  </Label>
+                  <Select value={priority} onValueChange={(value) => setPriority(value as Priority)}>
+                    <SelectTrigger id="priority" className="h-11">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {priorityOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <div className="flex items-center gap-2">
+                            <div className={`h-2 w-2 rounded-full ${option.color}`} />
+                            {option.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-2">
+                  <Label htmlFor="notes" className="text-sm font-medium text-slate-700">
+                    Observações
+                  </Label>
+                  <Textarea
+                    id="notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Adicione observações sobre a negociação..."
+                    className="min-h-[80px] resize-none text-sm"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Use este campo para anotar detalhes importantes da negociação
+                  </p>
                 </div>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-          <Button variant="outline" onClick={onClose} className="px-6">
-            Cancelar
-          </Button>
-          <Button 
-            onClick={handleSave}
-            disabled={!title.trim() || !dealValue}
-            className="px-6 bg-blue-600 hover:bg-blue-700"
-          >
-            Salvar Alterações
-          </Button>
+            {/* Fixed Footer Actions */}
+            <div className="border-t border-slate-200 p-4 bg-white shrink-0">
+              <div className="flex justify-end gap-2.5">
+                <Button variant="outline" onClick={onClose} className="px-5 h-9">
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  className="px-5 h-9 bg-blue-600 hover:bg-blue-700"
+                >
+                  Salvar Alterações
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

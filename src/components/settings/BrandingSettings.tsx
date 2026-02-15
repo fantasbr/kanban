@@ -69,8 +69,8 @@ export function BrandingSettings() {
       await updateBranding({ favicon_url: url })
       
       toast.success('Favicon atualizado com sucesso!')
-    } catch (error: any) {
-      toast.error('Erro ao fazer upload do favicon: ' + error.message)
+    } catch (error: unknown) {
+      toast.error('Erro ao fazer upload do favicon: ' + (error instanceof Error ? error.message : 'Erro desconhecido'))
     }
   }
 

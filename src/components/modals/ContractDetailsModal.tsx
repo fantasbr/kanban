@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { User, Phone, Mail, MapPin, FileText, DollarSign, Calendar, Clock, Edit2, CheckCircle2, XCircle, ShoppingCart, RefreshCw, GraduationCap } from 'lucide-react'
 import { ContractStatusChangeModal } from './ContractStatusChangeModal'
 import { ContractLessonsTab } from '@/components/contracts/ContractLessonsTab'
-import { ContractStatusHistory } from '@/components/contract/ContractStatusHistory'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -44,10 +43,9 @@ interface ContractDetailsModalProps {
 export function ContractDetailsModal({ contract, open, onOpenChange }: ContractDetailsModalProps) {
   const { useReceivablesByContract, markAsPaid, updateReceivableDueDate, isMarkingAsPaid, isUpdatingDueDate } = useReceivables()
   const { activePaymentMethods } = usePaymentMethods()
-  const { useContractItems, updateContractStatus, isUpdatingStatus, useContractStatusHistory } = useContracts()
+  const { useContractItems, updateContractStatus, isUpdatingStatus } = useContracts()
   const { data: receivables, isLoading: loadingReceivables } = useReceivablesByContract(contract.id)
   const { data: contractItems, isLoading: loadingItems } = useContractItems(contract.id)
-  const { data: statusHistory, isLoading: loadingHistory } = useContractStatusHistory(contract.id)
   
   const [editingDueDateId, setEditingDueDateId] = useState<number | null>(null)
   const [newDueDate, setNewDueDate] = useState('')
@@ -468,13 +466,7 @@ export function ContractDetailsModal({ contract, open, onOpenChange }: ContractD
               )}
             </Card>
 
-            {/* Status History */}
-            <ContractStatusHistory 
-              history={statusHistory || []} 
-              isLoading={loadingHistory}
-            />
-
-            {contract.notes && (
+                        {contract.notes && (
               <Card className="p-5">
                 <h3 className="font-semibold text-lg mb-2">Observações</h3>
                 <p className="text-sm text-slate-600">{contract.notes}</p>
@@ -485,7 +477,6 @@ export function ContractDetailsModal({ contract, open, onOpenChange }: ContractD
             <TabsContent value="lessons" className="mt-6">
               <ContractLessonsTab 
                 contract={contract}
-                items={contractItems || []}
               />
             </TabsContent>
           </Tabs>

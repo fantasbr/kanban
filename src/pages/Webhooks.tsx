@@ -15,6 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { Copy, Webhook, Trash2, Plus, AlertCircle, ExternalLink, Activity } from 'lucide-react'
+import type { WebhookLog, WebhookCreateData, MutationError } from '@/types/supabase-helpers'
 
 export function Webhooks() {
   const { webhooks, isLoading, createWebhook, deleteWebhook, updateWebhook, isDeleting } = useWebhooks()
@@ -30,8 +31,9 @@ export function Webhooks() {
     try {
       await deleteWebhook(id)
       toast.success('Webhook deletado com sucesso')
-    } catch (error: any) {
-      toast.error('Erro ao deletar webhook: ' + error.message)
+    } catch (error: unknown) {
+      const err = error as MutationError
+      toast.error('Erro ao deletar webhook: ' + (err.message || 'Erro desconhecido'))
     }
   }
 
@@ -39,18 +41,9 @@ export function Webhooks() {
     try {
       await updateWebhook({ id, updates: { is_active: !currentStatus } })
       toast.success(currentStatus ? 'Webhook desativado' : 'Webhook ativado')
-    } catch (error: any) {
-      toast.error('Erro ao atualizar webhook: ' + error.message)
-    }
-  }
-
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast.success('Copiado para área de transferência!')
-    } catch (error) {
-      toast.error('Erro ao copiar. Copie manualmente.')
-      console.error('Clipboard error:', error)
+    } catch (error: unknown) {
+      const err = error as MutationError
+      toast.error('Erro ao atualizar webhook: ' + (err.message || 'Erro desconhecido'))
     }
   }
 
@@ -172,8 +165,9 @@ export function Webhooks() {
             const result = await createWebhook(data)
             setNewWebhookSecret(result.secret)
             toast.success('Webhook criado com sucesso!')
-          } catch (error: any) {
-            toast.error('Erro ao criar webhook: ' + error.message)
+          } catch (error: unknown) {
+            const err = error as MutationError
+            toast.error('Erro ao criar webhook: ' + (err.message || 'Erro desconhecido'))
           }
         }}
         newSecret={newWebhookSecret}
@@ -198,7 +192,7 @@ function CreateWebhookModal({
 }: {
   open: boolean
   onClose: () => void
-  onCreate: (data: any) => Promise<void>
+  onCreate: (data: WebhookCreateData) => Promise<void>
   newSecret: string | null
 }) {
   const [name, setName] = useState('')
@@ -443,14 +437,14 @@ function WebhookLogsModal({
   const { useWebhookLogs } = useWebhooks()
   const { data: logs, isLoading } = useWebhookLogs(subscriptionId)
 
-  const getStatusBadge = (log: any) => {
+  const getStatusBadge = (log: WebhookLog) => {
     if (log.error_message) {
       return <Badge variant="destructive">Erro</Badge>
     }
-    if (log.status_code >= 200 && log.status_code < 300) {
+    if (log.status_code && log.status_code >= 200 && log.status_code < 300) {
       return <Badge variant="default">Sucesso</Badge>
     }
-    if (log.status_code >= 400) {
+    if (log.status_code && log.status_code >= 400) {
       return <Badge variant="destructive">Falha</Badge>
     }
     return <Badge variant="secondary">Desconhecido</Badge>
@@ -476,7 +470,7 @@ function WebhookLogsModal({
           </div>
         ) : (
           <div className="space-y-3">
-            {logs.map((log: any) => (
+            {logs.map((log: WebhookLog) => (
               <Card key={log.id} className="p-4">
                 <div className="flex justify-between items-start mb-2">
                   <div>

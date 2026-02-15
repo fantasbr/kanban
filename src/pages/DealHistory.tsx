@@ -19,7 +19,6 @@ export function DealHistory() {
   const filteredDeals = archivedDeals.filter((deal) => {
     const searchLower = searchTerm.toLowerCase()
     return (
-      deal.title.toLowerCase().includes(searchLower) ||
       deal.contacts?.name.toLowerCase().includes(searchLower) ||
       deal.erp_contracts?.contract_number.toLowerCase().includes(searchLower) ||
       deal.archived_reason?.toLowerCase().includes(searchLower)
@@ -123,7 +122,7 @@ export function DealHistory() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
         <Input
-          placeholder="Buscar por cliente, título, contrato ou motivo..."
+          placeholder="Buscar por cliente, empresa, contrato ou motivo..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10"
@@ -168,7 +167,6 @@ export function DealHistory() {
                         <h3 className="font-semibold text-lg text-slate-900">
                           {deal.contacts?.name || 'Sem contato'}
                         </h3>
-                        <p className="text-slate-600">{deal.title}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <p className="text-2xl font-bold text-blue-600">

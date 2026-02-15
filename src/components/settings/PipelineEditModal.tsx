@@ -295,6 +295,7 @@ export function PipelineEditModal({ pipeline, open, onClose, onSave }: PipelineE
         {/* Stage Edit Modal */}
         {pipeline && (
           <StageEditModal
+            key={editingStage?.id || 'new'}
             stage={editingStage}
             pipelineId={pipeline.id}
             open={isStageModalOpen}

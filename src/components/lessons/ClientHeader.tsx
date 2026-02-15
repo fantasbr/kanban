@@ -39,11 +39,11 @@ export function ClientHeader({ client, contract }: ClientHeaderProps) {
                 <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
                   <span>CPF: {formatCPF(client.cpf)}</span>
                   <span>•</span>
-                  <span>{formatPhone(client.phone)}</span>
-                  {client.email && (
+                  <span>{formatPhone(client.contacts?.phone || '')}</span>
+                  {client.contacts?.email && (
                     <>
                       <span>•</span>
-                      <span>{client.email}</span>
+                      <span>{client.contacts.email}</span>
                     </>
                   )}
                 </div>
@@ -67,7 +67,7 @@ export function ClientHeader({ client, contract }: ClientHeaderProps) {
               <Award className="h-4 w-4 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">Categoria</p>
-                <Badge variant="secondary">{contract.category}</Badge>
+                <Badge variant="secondary">{contract.contract_types?.name || 'N/A'}</Badge>
               </div>
             </div>
 

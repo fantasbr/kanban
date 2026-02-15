@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type { Pipeline, Stage, Deal } from '@/types/database'
@@ -42,9 +43,15 @@ export function useKanban(pipelineId: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('crm_deals')
-        .select('*, contacts:crm_contacts(id, chatwoot_id, name, phone, email, profile_url)')
+        .select(`
+          *, 
+          contacts:crm_contacts(id, chatwoot_id, name, phone, email, profile_url),
+          companies:erp_companies(id, name),
+          contract_templates:erp_contract_templates(id, name)
+        `)
         .eq('pipeline_id', pipelineId)
         .eq('is_active', true) // Filtrar apenas deals ativos
+        .eq('is_archived', false) // Excluir deals arquivados
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -52,6 +59,35 @@ export function useKanban(pipelineId: string) {
     },
     enabled: !!pipelineId,
   })
+
+  // Realtime subscription for automatic sync
+  useEffect(() => {
+    if (!pipelineId) return
+
+    const channel = supabase
+      .channel(`deals-${pipelineId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'crm_deals',
+          filter: `pipeline_id=eq.${pipelineId}`,
+        },
+        (_payload) => {
+          // Invalidate queries to refetch fresh data
+          queryClient.invalidateQueries({ queryKey: ['deals', pipelineId] })
+        }
+      )
+      .subscribe()
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(channel).catch(() => {
+        // Ignore errors when closing channel during unmount
+      })
+    }
+  }, [pipelineId, queryClient])
 
   // Update deal stage (for drag & drop) - using RPC for activity logging
   const updateDealStageMutation = useMutation({
@@ -96,33 +132,56 @@ export function useKanban(pipelineId: string) {
     mutationFn: async ({
       pipeline_id,
       stage_id,
-      title,
       deal_value_negotiated,
       priority,
       contact_id,
+      company_id,
+      contract_template_id,
+      items,
     }: {
       pipeline_id: string
       stage_id: string
-      title: string
       deal_value_negotiated: number
       priority: 'low' | 'medium' | 'high'
-      contact_id?: number | null
+      contact_id: number
+      company_id: number
+      contract_type_id?: number | null
+      contract_template_id?: number | null
+      items?: { description: string; quantity: number; unit_price: number; total_price: number }[]
     }) => {
-      const { error } = await supabase
+      // Create deal
+      const { data: dealData, error: dealError } = await supabase
         .from('crm_deals')
         // @ts-expect-error - Supabase type inference issue with insert
         .insert({
           pipeline_id,
           stage_id,
-          title,
           deal_value_negotiated,
           priority,
-          contact_id: contact_id || null,
+          contact_id,
+          company_id,
+          contract_template_id: contract_template_id || null,
           chatwoot_conversation_id: null,
           ai_summary: null,
         })
+        .select()
+        .single()
 
-      if (error) throw error
+      if (dealError) throw dealError
+
+      // Create items if provided
+      if (items && items.length > 0 && dealData) {
+        const { error: itemsError } = await supabase
+          .from('crm_deal_items')
+          .insert(
+            items.map((item) => ({
+              ...item,
+              deal_id: (dealData as Deal).id,
+            })) as never
+          )
+
+        if (itemsError) throw itemsError
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deals', pipelineId] })
@@ -163,10 +222,13 @@ export function useKanban(pipelineId: string) {
     createDeal: (params: {
       pipeline_id: string
       stage_id: string
-      title: string
+      contact_id: number
+      company_id: number
       deal_value_negotiated: number
       priority: 'low' | 'medium' | 'high'
-      contact_id?: number | null
+      items?: { description: string; quantity: number; unit_price: number; total_price: number }[]
+      contract_type_id?: number | null
+      contract_template_id?: number | null
     }) => createDealMutation.mutate(params),
     deleteDeal: (params: { dealId: string }) => deleteDealMutation.mutate(params),
   }

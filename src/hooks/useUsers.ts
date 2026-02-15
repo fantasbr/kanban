@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import type { SystemUser, SystemRole } from './useAuth'
+import type { MutationError } from '@/types/supabase-helpers'
 
 export function useUsers() {
   const queryClient = useQueryClient()
@@ -62,8 +63,8 @@ export function useUsers() {
           auth_user_id: authData.user.id,
           email: userData.email,
           full_name: userData.full_name,
-          role_id: userData.role_id
-        })
+          role_id: userData.role_id,
+        } as never)
         .select()
         .single()
 
@@ -74,8 +75,9 @@ export function useUsers() {
       queryClient.invalidateQueries({ queryKey: ['system-users'] })
       toast.success('Usuário criado com sucesso!')
     },
-    onError: (error: any) => {
-      toast.error(`Erro ao criar usuário: ${error.message}`)
+    onError: (error) => {
+      const err = error as MutationError
+      toast.error(`Erro ao criar usuário: ${err.message}`)
     }
   })
 
@@ -93,7 +95,7 @@ export function useUsers() {
         .update({
           ...updates,
           updated_at: new Date().toISOString()
-        })
+        } as never)
         .eq('id', id)
         .select()
         .single()
@@ -105,8 +107,9 @@ export function useUsers() {
       queryClient.invalidateQueries({ queryKey: ['system-users'] })
       toast.success('Usuário atualizado com sucesso!')
     },
-    onError: (error: any) => {
-      toast.error(`Erro ao atualizar usuário: ${error.message}`)
+    onError: (error) => {
+      const err = error as MutationError
+      toast.error(`Erro ao atualizar usuário: ${err.message}`)
     }
   })
 
@@ -118,7 +121,7 @@ export function useUsers() {
         .update({
           is_active,
           updated_at: new Date().toISOString()
-        })
+        } as never)
         .eq('id', id)
         .select()
         .single()
@@ -132,8 +135,9 @@ export function useUsers() {
         variables.is_active ? 'Usuário ativado com sucesso!' : 'Usuário desativado com sucesso!'
       )
     },
-    onError: (error: any) => {
-      toast.error(`Erro ao alterar status: ${error.message}`)
+    onError: (error) => {
+      const err = error as MutationError
+      toast.error(`Erro ao alterar status: ${err.message}`)
     }
   })
 

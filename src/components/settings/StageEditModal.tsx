@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,13 +20,7 @@ export function StageEditModal({ stage, pipelineId, open, onClose, onSave }: Sta
   const [isWon, setIsWon] = useState(stage?.is_won || false)
 
   // Update state when stage changes
-  useEffect(() => {
-    if (stage) {
-      setName(stage.name)
-      setIsDefault(stage.is_default)
-      setIsWon(stage.is_won)
-    }
-  }, [stage])
+  // State initialized from props (reset via key in parent)
 
   const handleSave = () => {
     onSave(stage?.id || null, {

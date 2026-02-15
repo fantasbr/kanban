@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useKanban } from '@/hooks/useKanban'
 import { useClientVerification } from '@/hooks/useClientVerification'
 import { cn } from '@/lib/utils'
@@ -15,11 +16,11 @@ import { StageColumn } from '@/components/kanban/StageColumn'
 import { DealCard } from '@/components/kanban/DealCard'
 import { DealEditModal } from '@/components/kanban/DealEditModal'
 import { DealCreateModal } from '@/components/kanban/DealCreateModal'
-import { ClientVerificationModal } from '@/components/modals/ClientVerificationModal'
-import { ContractQuickCreateModal } from '@/components/modals/ContractQuickCreateModal'
+
 import type { Deal } from '@/types/database'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { setPendingDealWon } from '@/lib/sessionHelpers'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { toast } from 'sonner'
+
 
 export function Kanban() {
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>('')
@@ -41,15 +42,9 @@ export function Kanban() {
   const [deletingDeal, setDeletingDeal] = useState<Deal | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   
-  // Client verification states
-  const [isClientVerificationOpen, setIsClientVerificationOpen] = useState(false)
-  const [dealBeingProcessed, setDealBeingProcessed] = useState<Deal | null>(null)
-  const [pendingStageChange, setPendingStageChange] = useState<{ dealId: string; stageId: string } | null>(null)
-  
-  // Contract creation states
-  const [isContractModalOpen, setIsContractModalOpen] = useState(false)
-  const [linkedClientId, setLinkedClientId] = useState<number | null>(null)
-  const [linkedClientName, setLinkedClientName] = useState<string>('')
+
+
+  const navigate = useNavigate()
 
   const {
     pipelines,
@@ -64,7 +59,7 @@ export function Kanban() {
     deleteDeal,
   } = useKanban(selectedPipelineId)
   
-  const { findClientById } = useClientVerification()
+  const { findClientById, findClientByContact } = useClientVerification()
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -113,66 +108,55 @@ export function Kanban() {
     if (newStage?.is_won && deal) {
       // Verificar se deal tem cliente vinculado
       if (!deal.existing_client_id) {
-        // Precisa verificar/cadastrar cliente
-        setDealBeingProcessed(deal)
-        setPendingStageChange({ dealId, stageId: newStageId })
-        setIsClientVerificationOpen(true)
-        return // NÃO permite mudança ainda
+        // Verificar se o contato já tem um cliente cadastrado
+        const client = findClientByContact(deal.contact_id)
+        
+        if (client) {
+          // Cliente já existe, apenas vincular ao deal
+          updateDeal({ 
+            dealId: deal.id, 
+            updates: { existing_client_id: client.id } 
+          })
+          updateDealStage({ dealId, stageId: newStageId })
+          navigate(`/erp/contracts?clientId=${client.id}&dealId=${dealId}`)
+          return
+        } else {
+          // Redirecionar para página de clientes para cadastrar
+          // Salvar dealId e stageId no sessionStorage para retomar depois
+          const saved = setPendingDealWon({ dealId, stageId: newStageId })
+          if (!saved) {
+            console.error('Failed to save pending deal data')
+          }
+          navigate(`/erp/clients?contactId=${deal.contact_id}&fromDeal=${dealId}`)
+          return
+        }
       } else {
-        // Cliente já vinculado, perguntar sobre contrato
+        // Cliente já vinculado, navegar direto para contratos
         const client = findClientById(deal.existing_client_id)
         if (client) {
-          setDealBeingProcessed(deal)
-          setLinkedClientId(client.id)
-          setLinkedClientName(client.full_name)
-          setPendingStageChange({ dealId, stageId: newStageId })
-          setIsContractModalOpen(true)
-          return // NÃO permite mudança ainda
+          // Completar mudança de estágio
+          updateDealStage({ dealId, stageId: newStageId })
+          // Navegar para contratos com dealId
+          navigate(`/erp/contracts?clientId=${client.id}&dealId=${dealId}`)
+          return
         }
       }
     }
     
-    // Mudança normal de estágio
+    // Mudança normal de estágio - usar RPC para garantir log
     updateDealStage({ dealId, stageId: newStageId })
-  }
-  
-  const handleClientLinked = (clientId: number) => {
-    const client = findClientById(clientId)
-    if (client && dealBeingProcessed) {
-      setLinkedClientId(clientId)
-      setLinkedClientName(client.full_name)
-    }
-  }
-  
-  const handleContractPrompt = () => {
-    // Fechar modal de verificação e abrir modal de contrato
-    setIsClientVerificationOpen(false)
-    setIsContractModalOpen(true)
-  }
-  
-  const handleContractModalClose = () => {
-    // Ao fechar modal de contrato, completar a mudança de estágio
-    if (pendingStageChange) {
-      updateDealStage({
-        dealId: pendingStageChange.dealId,
-        stageId: pendingStageChange.stageId
-      })
-      setPendingStageChange(null)
-    }
     
-    setIsContractModalOpen(false)
-    setDealBeingProcessed(null)
-    setLinkedClientId(null)
-    setLinkedClientName('')
+    // Se for stage ganho ou perdendo status ganho, atualizar won_at separadamente
+    if (newStage?.is_won || (!newStage?.is_won && deal?.won_at)) {
+      const wonUpdate: Partial<Deal> = {
+        won_at: newStage?.is_won ? new Date().toISOString() : null,
+        stage_changed_at: new Date().toISOString()
+      }
+      updateDeal({ dealId, updates: wonUpdate })
+    }
   }
   
-  const handleClientVerificationClose = () => {
-    // Cancelou a verificação, voltar ao estágio anterior
-    toast.warning('Deal não pode ser marcado como ganho sem cliente ERP')
-    setIsClientVerificationOpen(false)
-    setDealBeingProcessed(null)
-    setPendingStageChange(null)
-  }
+
 
   const handleEditDeal = (deal: Deal) => {
     setEditingDeal(deal)
@@ -303,6 +287,7 @@ export function Kanban() {
 
       {/* Create Modal */}
       <DealCreateModal
+        key={isCreateModalOpen ? 'open' : 'closed'}
         pipelineId={selectedPipelineId}
         stages={stages}
         open={isCreateModalOpen}
@@ -316,7 +301,7 @@ export function Kanban() {
           <AlertDialogHeader>
             <AlertDialogTitle>Arquivar Negócio</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja arquivar o negócio "{deletingDeal?.title}"?
+              Tem certeza que deseja arquivar o negócio "{deletingDeal?.contacts?.name}"?
               O negócio será ocultado do quadro mas poderá ser recuperado posteriormente.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -331,28 +316,6 @@ export function Kanban() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      
-      {/* Client Verification Modal */}
-      <ClientVerificationModal
-        isOpen={isClientVerificationOpen}
-        deal={dealBeingProcessed}
-        contact={dealBeingProcessed?.contacts || null}
-        onClose={handleClientVerificationClose}
-        onClientLinked={handleClientLinked}
-        onContractPrompt={handleContractPrompt}
-      />
-      
-      {/* Contract Quick Create Modal */}
-      {linkedClientId && dealBeingProcessed && (
-        <ContractQuickCreateModal
-          isOpen={isContractModalOpen}
-          onClose={handleContractModalClose}
-          clientId={linkedClientId}
-          clientName={linkedClientName}
-          dealValue={dealBeingProcessed.deal_value_negotiated}
-          dealId={dealBeingProcessed.id}
-        />
-      )}
     </div>
   )
 }

@@ -23,7 +23,11 @@ export function ChatwootEmbed() {
     setIframeError(false)
     const iframe = document.getElementById('chatwoot-iframe') as HTMLIFrameElement
     if (iframe) {
-      iframe.src = iframe.src
+      const currentSrc = iframe.src
+      iframe.src = ''
+      setTimeout(() => {
+        iframe.src = currentSrc
+      }, 10)
     }
   }
 
@@ -60,7 +64,7 @@ export function ChatwootEmbed() {
         {/* Header com controles */}
         <div className="flex items-center justify-between p-4 border-b bg-white">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-linear-to-br from-green-500 to-teal-600 flex items-center justify-center">
               <span className="text-white text-xl">💬</span>
             </div>
             <div>
@@ -103,7 +107,7 @@ export function ChatwootEmbed() {
       {/* Header com controles */}
       <div className="flex items-center justify-between p-4 border-b bg-white">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-lg bg-linear-to-br from-green-500 to-teal-600 flex items-center justify-center">
             <span className="text-white text-xl">💬</span>
           </div>
           <div>

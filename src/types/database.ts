@@ -14,6 +14,7 @@ export interface Stage {
   position: number;
   is_default: boolean;
   is_won: boolean;
+  probability: number; // NOVO: Probabilidade base (0-100)
   created_at: string;
 }
 
@@ -40,21 +41,46 @@ export interface Deal {
   pipeline_id: string;
   stage_id: string;
   contact_id: number | null;
-  title: string;
   deal_value_negotiated: number;
   priority: Priority;
   chatwoot_conversation_id: string | null;
   ai_summary: string | null;
+  notes: string | null;  // NOVO: Observações da negociação
   needs_contract: boolean;
   existing_client_id: number | null;
+  contract_template_id: number | null;  // Template de contrato sugerido
+  company_id: number | null;  // Empresa associada ao deal
   is_archived: boolean;
   archived_at: string | null;
   archived_reason: string | null;
   contract_id: number | null;
+  stage_changed_at: string | null; // NOVO: Data de mudança de estágio
   created_at: string;
   updated_at: string;
+  won_at: string | null; // NOVO: Data de ganho do negócio
   // Para joins
   contacts?: Contact | null;
+  companies?: Company | null;  // Join com empresa
+  contract_templates?: {
+    id: number;
+    name: string;
+    value: number | null;
+  } | null;
+  deal_items?: DealItem[];  // Itens customizados do deal
+}
+
+export interface DealItem {
+  id: number;
+  deal_id: string;
+  catalog_item_id: number | null;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
 }
 
 // ============================================
@@ -97,6 +123,7 @@ export interface ContractTemplate {
   name: string;
   type: "contract" | "receipt";
   contract_type_id: number | null;
+  value?: number | null;
   template_html: string;
   css_styles: string | null;
   header_html: string | null;
@@ -111,6 +138,9 @@ export interface Client {
   id: number;
   contact_id: number | null;
   full_name: string;
+  email?: string | null;
+  person_type?: 'pf' | 'pj' | null;
+  cnpj?: string | null;
   cpf: string;
   rg_number: string | null;
   rg_issuer_state: string | null;
@@ -136,9 +166,14 @@ export interface Client {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Audit fields
+  created_by: string | null;
+  updated_by: string | null;
   // Para joins
   contacts?: Contact | null;
 }
+
+export type ContractStatus = "draft" | "active" | "completed" | "cancelled";
 
 export interface Contract {
   id: number;
@@ -146,6 +181,7 @@ export interface Contract {
   client_id: number;
   contract_type_id: number;
   template_id: number | null;
+  deal_id: string | null;  // NOVO: Deal que originou este contrato
   contract_number: string;
   total_value: number;
   discount: number;
@@ -154,7 +190,7 @@ export interface Contract {
   payment_method_id: number | null;
   start_date: string;
   end_date: string | null;
-  status: "draft" | "active" | "completed" | "cancelled";
+  status: ContractStatus;
   pdf_url: string | null;
   notes: string | null;
   created_at: string;
@@ -277,6 +313,7 @@ export interface Database {
         Row: Contact;
         Insert: Omit<Contact, "id" | "created_at">;
         Update: Partial<Omit<Contact, "id" | "created_at">>;
+        Relationships: [];
       };
       crm_deal_titles: {
         Row: DealTitle;
@@ -301,6 +338,11 @@ export interface Database {
         Update: Partial<
           Omit<Deal, "id" | "created_at" | "updated_at" | "contacts">
         >;
+      };
+      crm_deal_items: {
+        Row: DealItem;
+        Insert: Omit<DealItem, "id" | "created_at" | "updated_at">;
+        Update: Partial<Omit<DealItem, "id" | "created_at" | "updated_at">>;
       };
       app_settings: {
         Row: {
@@ -421,6 +463,64 @@ export interface Database {
         Insert: Omit<AuditLog, "id" | "created_at">;
         Update: Partial<Omit<AuditLog, "id" | "created_at">>;
       };
+      erp_instructor_blocks: {
+        Row: InstructorBlock;
+        Insert: Omit<InstructorBlock, "id" | "created_at">;
+        Update: Partial<Omit<InstructorBlock, "id" | "created_at">>;
+      };
+      erp_instructor_preferences: {
+        Row: InstructorPreferences;
+        Insert: Omit<InstructorPreferences, "created_at">;
+        Update: Partial<Omit<InstructorPreferences, "created_at">>;
+      };
+      erp_instructors: {
+        Row: Instructor;
+        Insert: Omit<Instructor, "id" | "created_at" | "updated_at" | "companies">;
+        Update: Partial<Omit<Instructor, "id" | "created_at" | "updated_at" | "companies">>;
+      };
+      erp_lessons: {
+        Row: Lesson;
+        Insert: Omit<Lesson, "id" | "created_at" | "updated_at" | "contract_items" | "instructors" | "vehicles">;
+        Update: Partial<Omit<Lesson, "id" | "created_at" | "updated_at" | "contract_items" | "instructors" | "vehicles">>;
+      };
+    };
+    Functions: {
+      get_available_credits: {
+        Args: {
+          p_contract_item_id: number;
+        };
+        Returns: number;
+      };
+      check_lesson_conflicts: {
+        Args: {
+          p_lesson_id: number | null;
+          p_instructor_id: number;
+          p_vehicle_id: number;
+          p_lesson_date: string;
+          p_start_time: string;
+          p_end_time: string;
+        };
+        Returns: LessonConflict[];
+      };
+      check_instructor_availability: {
+        Args: {
+          p_instructor_id: number;
+          p_lesson_date: string;
+          p_start_time: string;
+          p_end_time: string;
+        };
+        Returns: {
+          is_available: boolean;
+          reason: string;
+        }[];
+      };
+      validate_instructor_vehicle_category: {
+        Args: {
+          p_instructor_id: number;
+          p_vehicle_id: number;
+        };
+        Returns: boolean;
+      };
     };
   };
 }
@@ -457,13 +557,13 @@ export interface VehicleCompany {
 export type CNHCategory = 'A' | 'B' | 'AB' | 'C' | 'D' | 'E' | 'AC' | 'AD' | 'AE'
 
 export interface WeeklySchedule {
-  monday: { enabled: boolean; start: string; end: string }
-  tuesday: { enabled: boolean; start: string; end: string }
-  wednesday: { enabled: boolean; start: string; end: string }
-  thursday: { enabled: boolean; start: string; end: string }
-  friday: { enabled: boolean; start: string; end: string }
-  saturday: { enabled: boolean; start: string; end: string }
-  sunday: { enabled: boolean; start: string | null; end: string | null }
+  monday?: { enabled: boolean; start: string; end: string }
+  tuesday?: { enabled: boolean; start: string; end: string }
+  wednesday?: { enabled: boolean; start: string; end: string }
+  thursday?: { enabled: boolean; start: string; end: string }
+  friday?: { enabled: boolean; start: string; end: string }
+  saturday?: { enabled: boolean; start: string; end: string }
+  sunday?: { enabled: boolean; start: string | null; end: string | null }
 }
 
 export interface Instructor {
@@ -483,7 +583,7 @@ export interface Instructor {
   hourly_rate: number
   photo_url: string | null
   lesson_duration_minutes: number
-  weekly_schedule: WeeklySchedule
+  weekly_schedule: WeeklySchedule | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -498,17 +598,7 @@ export interface InstructorCompany {
   created_at: string
 }
 
-export interface InstructorBlock {
-  id: number
-  instructor_id: number
-  block_date: string
-  start_time: string
-  end_time: string
-  reason: string | null
-  all_day: boolean
-  created_at: string
-  created_by: string | null
-}
+
 
 // Lesson Types
 export type LessonStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show'
@@ -565,7 +655,7 @@ export interface LessonAudit {
   previous_status: string | null
   new_status: string | null
   reason: string | null
-  metadata: Record<string, any> | null
+  metadata: Record<string, unknown> | null
   ip_address: string | null
   user_agent: string | null
 }
@@ -615,4 +705,25 @@ export interface CalendarEvent {
   borderColor: string
   data: Lesson
 }
+
+export interface InstructorPreferences {
+  instructor_id: number
+  max_lessons_per_day: number
+  preferred_vehicles: number[]
+  break_duration: number
+  updated_at: string
+}
+
+
+export interface InstructorBlock {
+  id: number
+  instructor_id: number
+  start_date: string
+  end_date: string
+  reason: 'vacation' | 'sick_leave' | 'training' | 'other'
+  notes: string | null
+  created_at: string
+  created_by: string | null
+}
+
 

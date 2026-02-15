@@ -68,14 +68,14 @@ export function useWebhooks() {
           retry_count: retryCount,
           timeout_seconds: timeoutSeconds,
           headers,
-        })
+        } as never)
         .select()
         .single()
 
       if (error) throw error
 
       // Retornar secret apenas uma vez
-      return { ...data, secret }
+      return { ...(data as WebhookSubscription), secret }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['webhooks'] })
@@ -92,7 +92,7 @@ export function useWebhooks() {
     }) => {
       const { error } = await supabase
         .from('webhook_subscriptions')
-        .update(updates)
+        .update(updates as never)
         .eq('id', id)
 
       if (error) throw error

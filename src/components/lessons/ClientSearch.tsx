@@ -26,6 +26,17 @@ interface ContractOption {
   completed_lessons: number
 }
 
+interface ContractData {
+  id: number
+  contract_number: string
+  status: string
+}
+
+interface ContractItemData {
+  id: number
+  quantity: number
+}
+
 interface ClientSearchProps {
   onClientSelect: (client: ClientWithContract | null) => void
 }
@@ -72,14 +83,14 @@ export function ClientSearch({ onClientSelect }: ClientSearchProps) {
 
       // Get details for each contract
       const contractsWithDetails = await Promise.all(
-        (contractsData || []).map(async (contract: any) => {
+        (contractsData || []).map(async (contract: ContractData) => {
           const { data: items } = await supabase
             .from('erp_contract_items')
             .select('id, quantity')
             .eq('contract_id', contract.id)
 
-          const itemIds = (items || []).map((item: any) => item.id)
-          const totalLessons = (items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)
+          const itemIds = (items || []).map((item: ContractItemData) => item.id)
+          const totalLessons = (items || []).reduce((sum: number, item: ContractItemData) => sum + (item.quantity || 0), 0)
 
           let completedCount = 0
           if (itemIds.length > 0) {
@@ -142,7 +153,7 @@ export function ClientSearch({ onClientSelect }: ClientSearchProps) {
           status: 'active',
           total_lessons: contract.total_lessons,
           completed_lessons: contract.completed_lessons,
-        } as any,
+        } as Contract & { total_lessons: number; completed_lessons: number },
       })
     }
   }

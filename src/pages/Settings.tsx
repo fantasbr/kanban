@@ -3,6 +3,8 @@ import { PipelineManager } from '@/components/settings/PipelineManager'
 import { ChatwootSettings } from '@/components/settings/ChatwootSettings'
 import { DealTitlesManager } from '@/components/settings/DealTitlesManager'
 import { Companies } from './erp/Companies'
+import { Vehicles } from './erp/Vehicles'
+import { Instructors } from './erp/Instructors'
 import { ERPSettingsManager } from '@/components/settings/ERPSettingsManager'
 import { PDFTemplateSettings } from '@/components/settings/PDFTemplateSettings'
 import { BrandingSettings } from '@/components/settings/BrandingSettings'
@@ -66,12 +68,14 @@ export function Settings() {
         {/* ERP Tab */}
         <TabsContent value="erp" className="mt-6">
           <Tabs defaultValue="companies" className="w-full">
-            <TabsList className="grid w-full max-w-3xl grid-cols-5">
+            <TabsList className="grid w-full max-w-4xl grid-cols-7">
               <TabsTrigger value="companies">Empresas</TabsTrigger>
               <TabsTrigger value="contract-settings">Contratos</TabsTrigger>
               <TabsTrigger value="catalog-items">Itens</TabsTrigger>
               <TabsTrigger value="contract-templates">Templates</TabsTrigger>
               <TabsTrigger value="pdf-templates">PDF</TabsTrigger>
+              <TabsTrigger value="vehicles">Veículos</TabsTrigger>
+              <TabsTrigger value="instructors">Instrutores</TabsTrigger>
             </TabsList>
 
             <TabsContent value="companies" className="mt-6">
@@ -92,6 +96,14 @@ export function Settings() {
 
             <TabsContent value="pdf-templates" className="mt-6">
               <PDFTemplateSettings />
+            </TabsContent>
+
+            <TabsContent value="vehicles" className="mt-6">
+              <Vehicles />
+            </TabsContent>
+
+            <TabsContent value="instructors" className="mt-6">
+              <Instructors />
             </TabsContent>
           </Tabs>
         </TabsContent>

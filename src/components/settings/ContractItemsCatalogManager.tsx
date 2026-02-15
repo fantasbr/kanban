@@ -314,7 +314,7 @@ export function ContractItemsCatalogManager() {
                 <Label htmlFor="vehicle_category">Categoria do Veículo *</Label>
                 <Select
                   value={formData.vehicle_category || ''}
-                  onValueChange={(value) => setFormData({ ...formData, vehicle_category: value as any })}
+                  onValueChange={(value) => setFormData({ ...formData, vehicle_category: value as 'car' | 'motorcycle' | 'bus' | 'truck' })}
                   required
                 >
                   <SelectTrigger>
@@ -432,7 +432,7 @@ export function ContractItemsCatalogManager() {
                 <Label htmlFor="edit_vehicle_category">Categoria do Veículo *</Label>
                 <Select
                   value={formData.vehicle_category || ''}
-                  onValueChange={(value) => setFormData({ ...formData, vehicle_category: value as any })}
+                  onValueChange={(value) => setFormData({ ...formData, vehicle_category: value as 'car' | 'motorcycle' | 'bus' | 'truck' })}
                   required
                 >
                   <SelectTrigger>

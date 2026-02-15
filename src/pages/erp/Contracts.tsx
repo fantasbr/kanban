@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Plus, FileText, Eye, Calendar, DollarSign, Building, Download, Filter } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
+import { supabase } from '@/lib/supabase'
+import { logger } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -93,13 +95,21 @@ export function Contracts() {
     }
   }, [selectedTemplate])
 
-  // Detectar clientId na URL e abrir modal automaticamente
+  // Detectar clientId e dealId na URL e abrir modal automaticamente
   const [searchParams, setSearchParams] = useSearchParams()
+  const [dealIdFromUrl, setDealIdFromUrl] = useState<string | null>(null)
+  
   useEffect(() => {
     const clientId = searchParams.get('clientId')
+    const dealId = searchParams.get('dealId')
+    
     if (clientId && !isWizardOpen) {
       // Pré-selecionar o cliente
       setContractForm(prev => ({ ...prev, client_id: clientId }))
+      // Salvar dealId se existir
+      if (dealId) {
+        setDealIdFromUrl(dealId)
+      }
       // Abrir o wizard
       setIsWizardOpen(true)
       // Limpar o query parameter da URL
@@ -205,12 +215,12 @@ export function Contracts() {
     try {
       // Tentar gerar número via RPC
       contractNumber = await generateContractNumber()
-      console.log('✅ Número gerado via RPC:', contractNumber)
+      logger.debug('✅ Número gerado via RPC:', contractNumber)
     } catch (error) {
-      console.error('❌ Erro ao gerar número via RPC:', error)
+      logger.error('❌ Erro ao gerar número via RPC:', error)
       // Fallback: usar timestamp para garantir unicidade
       contractNumber = `CONT-${Date.now()}`
-      console.log('⚠️ Usando fallback:', contractNumber)
+      logger.warn('⚠️ Usando fallback:', contractNumber)
     }
 
     // Preparar dados do contrato
@@ -218,7 +228,8 @@ export function Contracts() {
       company_id: parseInt(contractForm.company_id),
       client_id: parseInt(contractForm.client_id),
       contract_type_id: parseInt(contractForm.contract_type_id),
-      template_id: null,
+      template_id: selectedTemplateId ? parseInt(selectedTemplateId) : null,
+      deal_id: dealIdFromUrl || null,  // NOVO: Rastreamento do deal
       contract_number: contractNumber,
       total_value: parseFloat(contractForm.total_value) || calculateTotal(),
       discount: parseFloat(contractForm.discount) || 0,
@@ -241,21 +252,35 @@ export function Contracts() {
         quantity: parseFloat(item.quantity) || 1,
         unit_price: parseFloat(item.unit_price) || 0,
         total_price: (parseFloat(item.quantity) || 1) * (parseFloat(item.unit_price) || 0),
+        is_extra: false,
       }))
 
 
     // Criar contrato
     try {
-      await createContract({
+      const result = await createContract({
         contract: contractData,
         items: contractItems,
       })
       
+      // Se veio de um deal, atualizar o deal
+      if (dealIdFromUrl && result) {
+        await supabase
+          .from('crm_deals')
+          .update({ 
+            needs_contract: false,
+            contract_id: result.id,
+            is_archived: true // Arquivar automaticamente quando contrato é criado
+          } as never)
+          .eq('id', dealIdFromUrl)
+      }
+      
       toast.success('Contrato criado com sucesso!')
       setIsWizardOpen(false)
       resetForm()
+      setDealIdFromUrl(null)
     } catch (error: unknown) {
-      console.error('Erro ao criar contrato:', error)
+      logger.error('Erro ao criar contrato:', error)
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
       toast.error(`Erro ao criar contrato: ${errorMessage}`)
     }

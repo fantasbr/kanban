@@ -103,10 +103,22 @@ export function ClientVerificationModal({
         source: 'crm',
         notes: null,
         is_active: true,
+        created_by: null, // Será preenchido pelo trigger
+        updated_by: null, // Será preenchido pelo trigger
       })
       
-      await updateDeal({ dealId: deal.id, updates: { existing_client_id: newClient.id } })
+      // Ensure deal is updated before proceeding
+      await updateDeal({ 
+        dealId: deal.id, 
+        updates: { existing_client_id: newClient.id } 
+      })
+      
+      // Call the callback to update parent state
       onClientLinked(newClient.id)
+      
+      // Update local state for display
+      setFoundClient(newClient)
+      
       toast.success('Cliente cadastrado e vinculado!')
       setStep('contract')
     } catch (error) {
@@ -117,14 +129,15 @@ export function ClientVerificationModal({
 
   const handleCreateContract = () => {
     onContractPrompt()
-    handleClose()
+    // Don't call handleClose() - onContractPrompt already closes modal and clears state
   }
 
   const handleDecideLater = async () => {
     if (!deal) return
     await updateDeal({ dealId: deal.id, updates: { needs_contract: true } })
     toast.info('Deal marcado. Contrato pendente.')
-    handleClose()
+    // Use onContractPrompt to properly close and complete the stage change
+    onContractPrompt()
   }
 
   const handleClose = () => {
@@ -156,8 +169,8 @@ export function ClientVerificationModal({
               </DialogTitle>
               <DialogDescription>
                 {foundClient
-                  ? 'Este contato já é cliente ERP'
-                  : 'Para marcar como ganho, cadastre o cliente no ERP'}
+                  ? 'Este contato já é um cliente cadastrado'
+                  : 'Para marcar como ganho, cadastre o cliente'}
               </DialogDescription>
             </DialogHeader>
 

@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-serve(async (req) => {
+serve(async () => {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -33,16 +33,36 @@ serve(async (req) => {
     }), {
       headers: { 'Content-Type': 'application/json' },
     })
-  } catch (error) {
-    console.error('Error processing webhooks:', error)
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error: unknown) {
+    const err = error as Error
+    console.error('Error processing webhooks:', err)
+    return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     })
   }
 })
 
-async function processWebhook(supabase: any, queueItem: any) {
+// interfaces
+interface WebhookSubscription {
+  id: number
+  name: string
+  url: string
+  secret: string
+  headers: Record<string, string>
+  timeout_seconds: number
+  retry_count: number
+}
+
+interface WebhookQueueItem {
+  id: number
+  event_type: string
+  payload: Record<string, unknown>
+  attempts: number
+  webhook_subscriptions: WebhookSubscription
+}
+
+async function processWebhook(supabase: SupabaseClient, queueItem: WebhookQueueItem) {
   const subscription = queueItem.webhook_subscriptions
   const startTime = Date.now()
 
@@ -128,18 +148,19 @@ async function processWebhook(supabase: any, queueItem: any) {
       duration: durationMs
     }
 
-  } catch (error) {
+  } catch (error: unknown) {
+    const err = error as Error
     const durationMs = Date.now() - startTime
     const attempts = queueItem.attempts + 1
 
-    console.error(`Webhook ${queueItem.id} failed:`, error.message)
+    console.error(`Webhook ${queueItem.id} failed:`, err.message)
 
     // Log erro
     await supabase.from('webhook_logs').insert({
       subscription_id: subscription.id,
       event_type: queueItem.event_type,
       payload: queueItem.payload,
-      error_message: error.message,
+      error_message: err.message,
       attempt_number: attempts,
       duration_ms: durationMs,
     })
@@ -156,7 +177,7 @@ async function processWebhook(supabase: any, queueItem: any) {
       return {
         id: queueItem.id,
         status: 'failed',
-        error: error.message,
+        error: err.message,
         attempts
       }
     } else {
@@ -170,7 +191,7 @@ async function processWebhook(supabase: any, queueItem: any) {
       return {
         id: queueItem.id,
         status: 'retry',
-        error: error.message,
+        error: err.message,
         attempts
       }
     }

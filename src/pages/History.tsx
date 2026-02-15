@@ -1,113 +1,43 @@
 import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { UserPlus, FileText, ArrowRight, RefreshCw, Filter, TestTube, Calendar, X } from 'lucide-react'
-import { useActivityHistory } from '@/hooks/useActivityHistory'
-import type { Activity, ActivityType } from '@/types/activity'
-import { ACTIVITY_TYPE_LABELS, ACTIVITY_TYPE_COLORS } from '@/types/activity'
-import { formatDistanceToNow } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-import { supabase } from '@/lib/supabase'
-import { toast } from 'sonner'
-import { useKanban } from '@/hooks/useKanban'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
+import { RefreshCw, Users, Building2, FileText, DollarSign, GraduationCap } from 'lucide-react'
+import { useCrmAudit } from '@/hooks/useCrmAudit'
+import { useErpAudit } from '@/hooks/useErpAudit'
+import { useContractsAudit } from '@/hooks/useContractsAudit'
+import { useFinancialAudit } from '@/hooks/useFinancialAudit'
+import { useLessonsAudit } from '@/hooks/useLessonsAudit'
+import { AuditTimeline } from '@/components/audit/AuditTimeline'
 
 export function History() {
-  const [selectedTypes, setSelectedTypes] = useState<ActivityType[]>([])
-  const [selectedPipeline, setSelectedPipeline] = useState<string>('all')
-  const [startDate, setStartDate] = useState<string>('')
-  const [endDate, setEndDate] = useState<string>('')
-  
-  const { pipelines } = useKanban('')
-  
-  const { activities, isLoading, refetch } = useActivityHistory({
-    limit: 100,
-    activityTypes: selectedTypes.length > 0 ? selectedTypes : undefined,
-  })
+  const [activeTab, setActiveTab] = useState('crm')
 
-  const testAuthContext = async () => {
-    try {
-      const { data, error } = await supabase.rpc('test_auth_context')
-      
-      if (error) {
-        toast.error(`Erro: ${error.message}`)
-        console.error('Auth test error:', error)
-        return
-      }
-      
-      if (data && data.length > 0) {
-        const authData = data[0]
-        toast.success(`✅ Auth OK: ${authData.user_email || authData.user_id || 'Sem dados'}`)
-        console.log('Auth context:', authData)
-      } else {
-        toast.warning('⚠️ Auth retornou vazio')
-        console.log('Auth context:', data)
-      }
-    } catch (err) {
-      toast.error(`Exceção: ${err}`)
-      console.error('Auth test exception:', err)
+  const crmAudit = useCrmAudit({ limit: 100 })
+  const erpAudit = useErpAudit({ limit: 100 })
+  const contractsAudit = useContractsAudit({ limit: 100 })
+  const financialAudit = useFinancialAudit({ limit: 100 })
+  const lessonsAudit = useLessonsAudit({ limit: 100 })
+
+  const handleRefresh = () => {
+    switch (activeTab) {
+      case 'crm':
+        crmAudit.refetch()
+        break
+      case 'erp':
+        erpAudit.refetch()
+        break
+      case 'contracts':
+        contractsAudit.refetch()
+        break
+      case 'financial':
+        financialAudit.refetch()
+        break
+      case 'lessons':
+        lessonsAudit.refetch()
+        break
     }
-  }
-
-  const toggleFilter = (type: ActivityType) => {
-    setSelectedTypes(prev =>
-      prev.includes(type)
-        ? prev.filter(t => t !== type)
-        : [...prev, type]
-    )
-  }
-
-  const clearFilters = () => {
-    setSelectedTypes([])
-    setSelectedPipeline('all')
-    setStartDate('')
-    setEndDate('')
-  }
-
-  // Aplicar filtros de pipeline e data
-  const filteredActivities = activities.filter(activity => {
-    // Filtro de pipeline
-    if (selectedPipeline !== 'all') {
-      const pipelineName = activity.metadata?.pipeline_name
-      if (!pipelineName || pipelineName !== selectedPipeline) {
-        return false
-      }
-    }
-
-    // Filtro de data
-    const activityDate = new Date(activity.created_at)
-    
-    if (startDate) {
-      const start = new Date(startDate)
-      start.setHours(0, 0, 0, 0)
-      if (activityDate < start) return false
-    }
-    
-    if (endDate) {
-      const end = new Date(endDate)
-      end.setHours(23, 59, 59, 999)
-      if (activityDate > end) return false
-    }
-
-    return true
-  })
-
-  const hasActiveFilters = selectedTypes.length > 0 || selectedPipeline !== 'all' || startDate || endDate
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-slate-500">Carregando histórico...</div>
-      </div>
-    )
   }
 
   return (
@@ -120,297 +50,319 @@ export function History() {
             Acompanhe todas as ações realizadas no sistema
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={testAuthContext} variant="outline" className="gap-2">
-            <TestTube className="h-4 w-4" />
-            Testar Auth
-          </Button>
-          <Button onClick={() => refetch()} variant="outline" className="gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Atualizar
-          </Button>
-        </div>
+        <Button onClick={handleRefresh} variant="outline" className="gap-2">
+          <RefreshCw className="h-4 w-4" />
+          Atualizar
+        </Button>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5 text-slate-600" />
-              <CardTitle className="text-lg">Filtros</CardTitle>
-            </div>
-            {hasActiveFilters && (
-              <Button onClick={clearFilters} variant="ghost" size="sm" className="gap-1">
-                <X className="h-3 w-3" />
-                Limpar
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Activity Type Filters */}
-          <div>
-            <label className="text-sm font-medium text-slate-700 mb-2 block">
-              Tipo de Atividade
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <FilterButton
-                type="contact_created"
-                selected={selectedTypes.includes('contact_created')}
-                onClick={() => toggleFilter('contact_created')}
-              />
-              <FilterButton
-                type="deal_created"
-                selected={selectedTypes.includes('deal_created')}
-                onClick={() => toggleFilter('deal_created')}
-              />
-              <FilterButton
-                type="deal_stage_changed"
-                selected={selectedTypes.includes('deal_stage_changed')}
-                onClick={() => toggleFilter('deal_stage_changed')}
-              />
-            </div>
-          </div>
-
-          {/* Pipeline Filter */}
-          <div>
-            <label className="text-sm font-medium text-slate-700 mb-2 block">
-              Pipeline
-            </label>
-            <Select value={selectedPipeline} onValueChange={setSelectedPipeline}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todos os pipelines" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os pipelines</SelectItem>
-                {pipelines.map((pipeline) => (
-                  <SelectItem key={pipeline.id} value={pipeline.name}>
-                    {pipeline.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Date Range Filters */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-slate-700 mb-2 block flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                Data Inicial
-              </label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 mb-2 block flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                Data Final
-              </label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full"
-              />
-            </div>
-          </div>
-
-          {/* Results Count */}
-          <div className="text-sm text-slate-600 pt-2 border-t">
-            Mostrando <span className="font-semibold">{filteredActivities.length}</span> de{' '}
-            <span className="font-semibold">{activities.length}</span> atividades
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Timeline */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Timeline de Atividades</CardTitle>
-          <CardDescription>
-            Histórico completo de ações no sistema
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {filteredActivities.length === 0 ? (
-            <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed">
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">
-                  {hasActiveFilters
-                    ? 'Nenhuma atividade encontrada com os filtros aplicados'
-                    : 'Nenhuma atividade encontrada'}
-                </p>
-                {hasActiveFilters && (
-                  <Button onClick={clearFilters} variant="link" size="sm" className="mt-2">
-                    Limpar filtros
-                  </Button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {filteredActivities.map((activity) => (
-                <ActivityItem key={activity.id} activity={activity} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-function FilterButton({
-  type,
-  selected,
-  onClick,
-}: {
-  type: ActivityType
-  selected: boolean
-  onClick: () => void
-}) {
-  return (
-    <Button
-      onClick={onClick}
-      variant={selected ? 'default' : 'outline'}
-      size="sm"
-      className="gap-2"
-    >
-      <ActivityIcon type={type} size="sm" />
-      {ACTIVITY_TYPE_LABELS[type]}
-    </Button>
-  )
-}
-
-function ActivityItem({ activity }: { activity: Activity }) {
-  return (
-    <div className="flex gap-4 pb-6 border-l-2 border-slate-200 pl-6 relative last:pb-0">
-      {/* Icon */}
-      <div className="absolute -left-3 top-0 bg-white">
-        <ActivityIcon type={activity.activity_type} />
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 space-y-2">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge className={ACTIVITY_TYPE_COLORS[activity.activity_type]}>
-              {ACTIVITY_TYPE_LABELS[activity.activity_type]}
-            </Badge>
-            {activity.user_email && (
-              <Badge variant="outline" className="text-xs">
-                {activity.user_email}
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="crm" className="gap-2">
+            <Users className="h-4 w-4" />
+            CRM
+            {crmAudit.items.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {crmAudit.items.length}
               </Badge>
             )}
-          </div>
-          <span className="text-xs text-slate-500 whitespace-nowrap">
-            {formatDistanceToNow(new Date(activity.created_at), {
-              addSuffix: true,
-              locale: ptBR,
-            })}
-          </span>
-        </div>
+          </TabsTrigger>
+          <TabsTrigger value="erp" className="gap-2">
+            <Building2 className="h-4 w-4" />
+            ERP
+            {erpAudit.items.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {erpAudit.items.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="contracts" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Contratos
+            {contractsAudit.items.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {contractsAudit.items.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="financial" className="gap-2">
+            <DollarSign className="h-4 w-4" />
+            Financeiro
+            {financialAudit.items.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {financialAudit.items.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="lessons" className="gap-2">
+            <GraduationCap className="h-4 w-4" />
+            Aulas
+            {lessonsAudit.items.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {lessonsAudit.items.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-        {/* Description */}
-        <div className="space-y-1">
-          <p className="font-medium text-slate-900">
-            {getActivityDescription(activity)}
-          </p>
-          <div className="text-sm text-slate-600">
-            {getActivityDetails(activity)}
-          </div>
-        </div>
-      </div>
+        {/* CRM Tab */}
+        <TabsContent value="crm" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Auditoria CRM</CardTitle>
+              <CardDescription>
+                Histórico de contatos, deals, pipelines e stages
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {crmAudit.isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Carregando...
+                </div>
+              ) : (
+                <AuditTimeline
+                  items={crmAudit.items}
+                  renderBadge={(item) => (
+                    <Badge className="bg-blue-100 text-blue-700">
+                      {item.action} - {item.entity_type}
+                    </Badge>
+                  )}
+                  renderContent={(item) => {
+                    const pipelineName = item.metadata?.pipeline_name ? String(item.metadata.pipeline_name) : null;
+                    const oldStageName = item.metadata?.old_stage_name ? String(item.metadata.old_stage_name) : null;
+                    const newStageName = item.metadata?.new_stage_name ? String(item.metadata.new_stage_name) : null;
+                    
+                    return (
+                      <div className="space-y-1">
+                        <p className="font-medium">
+                          {String(item.metadata?.contact_name || item.metadata?.deal_title || 'Sem título')}
+                        </p>
+                        {pipelineName && (
+                          <div className="text-sm text-slate-600">
+                            📊 Pipeline: {pipelineName}
+                          </div>
+                        )}
+                        {oldStageName && newStageName && (
+                          <div className="text-sm text-slate-600">
+                            {oldStageName} → {newStageName}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }}
+                  emptyMessage="Nenhuma atividade CRM encontrada"
+                />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ERP Tab */}
+        <TabsContent value="erp" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Auditoria ERP</CardTitle>
+              <CardDescription>
+                Histórico de clientes e fornecedores
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {erpAudit.isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Carregando...
+                </div>
+              ) : (
+                <AuditTimeline
+                  items={erpAudit.items}
+                  renderBadge={(item) => (
+                    <Badge className="bg-emerald-100 text-emerald-700">
+                      {item.action} - {item.entity_type}
+                    </Badge>
+                  )}
+                  renderContent={(item) => {
+                    const cpf = item.metadata?.cpf ? String(item.metadata.cpf) : null;
+                    
+                    return (
+                      <div className="space-y-1">
+                        <p className="font-medium">
+                          {String(item.metadata?.client_name || 'Sem nome')}
+                        </p>
+                        {cpf && (
+                          <div className="text-sm text-slate-600">
+                            📄 CPF: {cpf}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }}
+                  emptyMessage="Nenhuma atividade ERP encontrada"
+                />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Contracts Tab */}
+        <TabsContent value="contracts" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Auditoria de Contratos</CardTitle>
+              <CardDescription>
+                Histórico de criação e alterações de contratos
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {contractsAudit.isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Carregando...
+                </div>
+              ) : (
+                <AuditTimeline
+                  items={contractsAudit.items}
+                  renderBadge={(item) => (
+                    <Badge className="bg-indigo-100 text-indigo-700">
+                      {item.action}
+                    </Badge>
+                  )}
+                  renderContent={(item) => {
+                    const clientName = item.metadata?.client_name ? String(item.metadata.client_name) : null;
+                    
+                    return (
+                      <div className="space-y-1">
+                        <p className="font-medium">
+                          Contrato #{String(item.metadata?.contract_number || item.entity_id)}
+                        </p>
+                        {clientName && (
+                          <div className="text-sm text-slate-600">
+                            👤 Cliente: {clientName}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }}
+                  emptyMessage="Nenhuma atividade de contratos encontrada"
+                />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Financial Tab */}
+        <TabsContent value="financial" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Auditoria Financeira</CardTitle>
+              <CardDescription>
+                Histórico de pagamentos e recebimentos
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {financialAudit.isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Carregando...
+                </div>
+              ) : (
+                <AuditTimeline
+                  items={financialAudit.items}
+                  renderBadge={(item) => (
+                    <Badge className="bg-green-100 text-green-700">
+                      {item.action} - {item.entity_type}
+                    </Badge>
+                  )}
+                  renderContent={(item) => {
+                    const amount = item.metadata?.amount ? String(item.metadata.amount) : null;
+                    const dueDate = item.metadata?.due_date ? String(item.metadata.due_date) : null;
+                    const status = item.metadata?.status ? String(item.metadata.status) : null;
+                    const installmentNumber = item.metadata?.installment_number ? String(item.metadata.installment_number) : null;
+                    const contractNumber = item.metadata?.contract_number ? String(item.metadata.contract_number) : null;
+                    const receiptNumber = item.metadata?.receipt_number ? String(item.metadata.receipt_number) : null;
+                    const receiptDate = item.metadata?.receipt_date ? String(item.metadata.receipt_date) : null;
+                    
+                    return (
+                      <div className="space-y-1">
+                        <p className="font-medium">
+                          {item.entity_type === 'receivable' && installmentNumber && (
+                            <>Parcela #{installmentNumber}</>
+                          )}
+                          {item.entity_type === 'receipt' && receiptNumber && (
+                            <>Recibo {receiptNumber}</>
+                          )}
+                          {!installmentNumber && !receiptNumber && (
+                            <>{item.entity_type} - {item.action}</>
+                          )}
+                        </p>
+                        {contractNumber && (
+                          <div className="text-sm text-slate-600">
+                            📄 Contrato: {contractNumber}
+                          </div>
+                        )}
+                        {amount && (
+                          <div className="text-sm text-slate-600">
+                            💰 Valor: R$ {parseFloat(amount).toFixed(2)}
+                          </div>
+                        )}
+                        {dueDate && (
+                          <div className="text-sm text-slate-600">
+                            📅 Vencimento: {new Date(dueDate).toLocaleDateString('pt-BR')}
+                          </div>
+                        )}
+                        {receiptDate && (
+                          <div className="text-sm text-slate-600">
+                            📅 Data: {new Date(receiptDate).toLocaleDateString('pt-BR')}
+                          </div>
+                        )}
+                        {status && (
+                          <div className="text-sm text-slate-600">
+                            🏷️ Status: {status === 'pending' ? 'Pendente' : status === 'paid' ? 'Pago' : status}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }}
+                  emptyMessage="Nenhuma atividade financeira encontrada"
+                />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Lessons Tab */}
+        <TabsContent value="lessons" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Auditoria de Aulas</CardTitle>
+              <CardDescription>
+                Histórico de agendamentos e realizações de aulas
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {lessonsAudit.isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Carregando...
+                </div>
+              ) : (
+                <AuditTimeline
+                  items={lessonsAudit.items}
+                  renderBadge={(item) => (
+                    <Badge className="bg-purple-100 text-purple-700">
+                      {item.action}
+                    </Badge>
+                  )}
+                  renderContent={(item) => (
+                    <div className="space-y-1">
+                      <p className="font-medium">
+                        Aula {item.action}
+                      </p>
+                    </div>
+                  )}
+                  emptyMessage="Nenhuma atividade de aulas encontrada"
+                />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
-}
-
-function ActivityIcon({ type, size = 'default' }: { type: ActivityType; size?: 'sm' | 'default' }) {
-  const sizeClass = size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'
-  const containerClass = size === 'sm' ? 'h-6 w-6' : 'h-8 w-8'
-
-  const icons = {
-    contact_created: <UserPlus className={`${sizeClass} text-green-600`} />,
-    deal_created: <FileText className={`${sizeClass} text-blue-600`} />,
-    deal_stage_changed: <ArrowRight className={`${sizeClass} text-orange-600`} />,
-    deal_updated: <FileText className={`${sizeClass} text-purple-600`} />,
-  }
-
-  return (
-    <div className={`${containerClass} rounded-full bg-slate-50 border-2 border-white flex items-center justify-center`}>
-      {icons[type]}
-    </div>
-  )
-}
-
-function getActivityDescription(activity: Activity): string {
-  const { activity_type, metadata } = activity
-
-  switch (activity_type) {
-    case 'contact_created':
-      return `Novo contato criado: ${metadata.contact_name || 'Sem nome'}`
-    
-    case 'deal_created':
-      return `Novo deal criado: ${metadata.deal_title || 'Sem título'}`
-    
-    case 'deal_stage_changed':
-      return `Deal "${metadata.deal_title}" mudou de stage`
-    
-    case 'deal_updated':
-      return `Deal "${metadata.deal_title}" foi atualizado`
-    
-    default:
-      return 'Atividade registrada'
-  }
-}
-
-function getActivityDetails(activity: Activity): React.ReactNode {
-  const { activity_type, metadata } = activity
-
-  switch (activity_type) {
-    case 'contact_created':
-      return (
-        <div className="space-y-1">
-          {metadata.phone && <div>📱 {metadata.phone}</div>}
-          {metadata.email && <div>📧 {metadata.email}</div>}
-        </div>
-      )
-    
-    case 'deal_created':
-      return (
-        <div className="space-y-1">
-          {metadata.pipeline_name && <div>📊 Pipeline: {metadata.pipeline_name}</div>}
-          {metadata.stage_name && <div>📍 Stage: {metadata.stage_name}</div>}
-          {metadata.contact_name && <div>👤 Contato: {metadata.contact_name}</div>}
-          {metadata.deal_value && (
-            <div>💰 Valor: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(metadata.deal_value)}</div>
-          )}
-        </div>
-      )
-    
-    case 'deal_stage_changed':
-      return (
-        <div className="space-y-1">
-          {metadata.contact_name && <div>👤 Contato: {metadata.contact_name}</div>}
-          {metadata.pipeline_name && <div>📊 Pipeline: {metadata.pipeline_name}</div>}
-          {metadata.old_stage_name && metadata.new_stage_name && (
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">{metadata.old_stage_name}</Badge>
-              <ArrowRight className="h-3 w-3 text-slate-400" />
-              <Badge variant="outline" className="text-xs">{metadata.new_stage_name}</Badge>
-            </div>
-          )}
-        </div>
-      )
-    
-    default:
-      return null
-  }
 }

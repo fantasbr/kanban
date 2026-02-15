@@ -1,7 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { Lesson, CreateLessonFormData, LessonFilters, LessonConflict } from '@/types/database'
+import { db } from '@/lib/db'
+import type { Lesson, CreateLessonFormData, LessonFilters, LessonConflict, ContractStatus } from '@/types/database'
+import type { LessonConflictResponse, InstructorAvailabilityResponse, LessonInsert, LessonUpdate } from '@/types/supabase-helpers'
 import { toast } from 'sonner'
+import { logger } from '@/lib/logger'
 
 export function useLessons(filters?: LessonFilters) {
   const queryClient = useQueryClient()
@@ -70,13 +73,13 @@ export function useLessons(filters?: LessonFilters) {
           )
         `)
         .eq('id', lessonData.contract_item_id)
-        .single()
+        .single<{ contracts: { status: ContractStatus } }>()
 
       if (!contractItem) {
         throw new Error('Item de contrato não encontrado')
       }
 
-      const contractStatus = (contractItem.contracts as any)?.status
+      const contractStatus = contractItem.contracts?.status
       if (contractStatus !== 'active') {
         throw new Error(
           `Não é possível agendar aulas para contratos ${
@@ -92,7 +95,7 @@ export function useLessons(filters?: LessonFilters) {
         .from('erp_instructors')
         .select('lesson_duration_minutes')
         .eq('id', lessonData.instructor_id)
-        .single()
+        .single<{ lesson_duration_minutes: number }>()
 
       if (!instructor) throw new Error('Instrutor não encontrado')
 
@@ -104,17 +107,18 @@ export function useLessons(filters?: LessonFilters) {
       const end_time = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`
 
       // 4. Check available credits
-      const { data: creditsData } = await supabase
+      const { data: creditsData } = await db
         .rpc('get_available_credits', {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           p_contract_item_id: lessonData.contract_item_id
-        })
+        } as any)
 
       if (!creditsData || creditsData <= 0) {
         throw new Error('Sem créditos disponíveis neste item de contrato')
       }
 
       // 5. Check conflicts
-      const { data: conflicts } = await supabase
+      const { data: conflicts } = await db
         .rpc('check_lesson_conflicts', {
           p_lesson_id: null,
           p_instructor_id: lessonData.instructor_id,
@@ -122,7 +126,8 @@ export function useLessons(filters?: LessonFilters) {
           p_lesson_date: lessonData.lesson_date,
           p_start_time: lessonData.start_time,
           p_end_time: end_time
-        })
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any).then(r => ({ data: r.data as unknown as LessonConflictResponse[] }))
 
       if (conflicts && conflicts.length > 0) {
         const conflict = conflicts[0] as LessonConflict
@@ -130,24 +135,26 @@ export function useLessons(filters?: LessonFilters) {
       }
 
       // 5. Check instructor availability
-      const { data: availability } = await supabase
+      const { data: availability } = await db
         .rpc('check_instructor_availability', {
           p_instructor_id: lessonData.instructor_id,
           p_lesson_date: lessonData.lesson_date,
           p_start_time: lessonData.start_time,
           p_end_time: end_time
-        })
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any).then(r => ({ data: r.data as unknown as InstructorAvailabilityResponse[] }))
 
       if (availability && availability.length > 0 && !availability[0].is_available) {
         throw new Error(availability[0].reason)
       }
 
       // 6. Validate CNH category
-      const { data: isValid } = await supabase
+      const { data: isValid } = await db
         .rpc('validate_instructor_vehicle_category', {
           p_instructor_id: lessonData.instructor_id,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           p_vehicle_id: lessonData.vehicle_id
-        })
+        } as any)
 
       if (!isValid) {
         throw new Error('Categoria CNH do instrutor incompatível com o tipo de veículo')
@@ -158,9 +165,8 @@ export function useLessons(filters?: LessonFilters) {
       if (!user) throw new Error('Usuário não autenticado')
 
       // 8. Create lesson
-      const { data: lesson, error } = await supabase
-        .from('erp_lessons')
-        .insert({
+      const { data, error } = await db
+        .insert('erp_lessons', {
           contract_item_id: lessonData.contract_item_id,
           instructor_id: lessonData.instructor_id,
           vehicle_id: lessonData.vehicle_id,
@@ -173,7 +179,7 @@ export function useLessons(filters?: LessonFilters) {
           notes: lessonData.notes,
           scheduled_by: user.id,
           status: 'scheduled'
-        })
+        } as LessonInsert)
         .select(`
           *,
           contract_items:erp_contract_items(
@@ -187,6 +193,8 @@ export function useLessons(filters?: LessonFilters) {
           vehicles:erp_vehicles(*)
         `)
         .single()
+      
+      const lesson = data as unknown as Lesson
 
       if (error) throw error
 
@@ -196,14 +204,14 @@ export function useLessons(filters?: LessonFilters) {
           .from('app_settings')
           .select('value')
           .eq('key', 'webhook_lesson_created_enabled')
-          .single()
+          .single<{ value: string }>()
 
         if (settings?.value === 'true') {
           const { data: webhookUrl } = await supabase
             .from('app_settings')
             .select('value')
             .eq('key', 'webhook_lesson_created_url')
-            .single()
+            .single<{ value: string }>()
 
           if (webhookUrl?.value) {
             await fetch(webhookUrl.value, {
@@ -213,18 +221,18 @@ export function useLessons(filters?: LessonFilters) {
                 event_type: 'lesson_created',
                 lesson_id: lesson.id,
                 student: {
-                  id: lesson.contract_items.contracts.clients.id,
-                  name: lesson.contract_items.contracts.clients.name,
-                  phone: lesson.contract_items.contracts.clients.phone
+                  id: lesson.contract_items?.contracts?.clients?.id,
+                  name: lesson.contract_items?.contracts?.clients?.full_name,
+                  phone: (lesson.contract_items?.contracts?.clients as unknown as { phone?: string })?.phone
                 },
                 instructor: {
-                  id: lesson.instructors.id,
-                  name: lesson.instructors.full_name
+                  id: lesson.instructors?.id,
+                  name: lesson.instructors?.full_name
                 },
                 vehicle: {
-                  id: lesson.vehicles.id,
-                  plate: lesson.vehicles.plate,
-                  model: lesson.vehicles.model
+                  id: lesson.vehicles?.id,
+                  plate: lesson.vehicles?.plate,
+                  model: lesson.vehicles?.model
                 },
                 lesson_date: lesson.lesson_date,
                 start_time: lesson.start_time,
@@ -234,14 +242,13 @@ export function useLessons(filters?: LessonFilters) {
             })
 
             // Mark webhook as sent
-            await supabase
-              .from('erp_lessons')
-              .update({ webhook_sent_at: new Date().toISOString() })
+            await db
+              .update('erp_lessons', { webhook_sent_at: new Date().toISOString() } as LessonUpdate)
               .eq('id', lesson.id)
           }
         }
       } catch (webhookError) {
-        console.error('Webhook error:', webhookError)
+        logger.error('Webhook error:', webhookError)
         // Don't fail the lesson creation if webhook fails
       }
 
@@ -252,10 +259,10 @@ export function useLessons(filters?: LessonFilters) {
       queryClient.invalidateQueries({ queryKey: ['contracts'] })
       
       // Get remaining credits
-      supabase
-        .rpc('get_available_credits', {
+      db.rpc('get_available_credits', {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           p_contract_item_id: data.contract_item_id
-        })
+        } as any)
         .then(({ data: credits }) => {
           toast.success(`Aula agendada! ${credits || 0} créditos restantes`)
         })
@@ -283,13 +290,13 @@ export function useLessons(filters?: LessonFilters) {
           )
         `)
         .eq('id', id)
-        .single()
+        .single<{ contract_items: { contracts: { status: ContractStatus } } }>()
 
       if (!lesson) {
         throw new Error('Aula não encontrada')
       }
 
-      const contractStatus = (lesson.contract_items as any)?.contracts?.status
+      const contractStatus = lesson.contract_items?.contracts?.status
       if (contractStatus !== 'active') {
         throw new Error(
           `Não é possível alterar o status de aulas de contratos ${
@@ -304,14 +311,13 @@ export function useLessons(filters?: LessonFilters) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuário não autenticado')
 
-      const { data, error } = await supabase
-        .from('erp_lessons')
-        .update({
+      const { data, error } = await db
+        .update('erp_lessons', {
           status: 'cancelled',
           cancelled_at: new Date().toISOString(),
           cancelled_by: user.id,
           cancellation_reason: reason
-        })
+        } as LessonUpdate)
         .eq('id', id)
         .select()
         .single()
@@ -347,13 +353,13 @@ export function useLessons(filters?: LessonFilters) {
           )
         `)
         .eq('id', id)
-        .single()
+        .single<{ contract_items: { contracts: { status: ContractStatus } } }>()
 
       if (!lesson) {
         throw new Error('Aula não encontrada')
       }
 
-      const contractStatus = (lesson.contract_items as any)?.contracts?.status
+      const contractStatus = lesson.contract_items?.contracts?.status
       if (contractStatus !== 'active') {
         throw new Error(
           `Não é possível alterar o status de aulas de contratos ${
@@ -368,14 +374,13 @@ export function useLessons(filters?: LessonFilters) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuário não autenticado')
 
-      const { data, error } = await supabase
-        .from('erp_lessons')
-        .update({
+      const { data, error } = await db
+        .update('erp_lessons', {
           status: 'no_show',
           no_show_at: new Date().toISOString(),
           no_show_by: user.id,
           instructor_notes: notes
-        })
+        } as LessonUpdate)
         .eq('id', id)
         .select()
         .single()
@@ -410,13 +415,13 @@ export function useLessons(filters?: LessonFilters) {
           )
         `)
         .eq('id', id)
-        .single()
+        .single<{ contract_items: { contracts: { status: ContractStatus } } }>()
 
       if (!lesson) {
         throw new Error('Aula não encontrada')
       }
 
-      const contractStatus = (lesson.contract_items as any)?.contracts?.status
+      const contractStatus = lesson.contract_items?.contracts?.status
       if (contractStatus !== 'active') {
         throw new Error(
           `Não é possível alterar o status de aulas de contratos ${
@@ -431,14 +436,13 @@ export function useLessons(filters?: LessonFilters) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuário não autenticado')
 
-      const { data, error } = await supabase
-        .from('erp_lessons')
-        .update({
+      const { data, error } = await db
+        .update('erp_lessons', {
           status: 'completed',
           completed_at: new Date().toISOString(),
           completed_by: user.id,
           instructor_notes: notes
-        })
+        } as LessonUpdate)
         .eq('id', id)
         .select()
         .single()

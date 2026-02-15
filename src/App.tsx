@@ -18,11 +18,12 @@ import { ClientDetails } from '@/pages/erp/ClientDetails'
 import { Contracts } from '@/pages/erp/Contracts'
 import { Financial } from '@/pages/erp/Financial'
 import { Templates } from '@/pages/erp/Templates'
-import { Vehicles } from '@/pages/erp/Vehicles'
-import { Instructors } from '@/pages/erp/Instructors'
 import { Lessons } from '@/pages/erp/Lessons'
 import { InstructorSchedule } from '@/pages/erp/InstructorSchedule'
 import { DashboardERP } from '@/pages/erp/DashboardERP'
+import { Reports } from '@/pages/erp/Reports'
+import { LessonAudit } from '@/pages/erp/LessonAudit'
+
 // System Pages
 import { UserManagement } from '@/pages/UserManagement'
 // Integration Pages
@@ -163,23 +164,11 @@ function App() {
             />
             <Route
               path="/erp/vehicles"
-              element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <Vehicles />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              }
+              element={<Navigate to="/settings" replace />}
             />
             <Route
               path="/erp/instructors"
-              element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <Instructors />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              }
+              element={<Navigate to="/settings" replace />}
             />
             <Route
               path="/erp/lessons"
@@ -207,6 +196,26 @@ function App() {
                 <ProtectedRoute>
                   <DashboardLayout>
                     <DashboardERP />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/erp/reports"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <Reports />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/erp/lesson-audit"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <LessonAudit />
                   </DashboardLayout>
                 </ProtectedRoute>
               }

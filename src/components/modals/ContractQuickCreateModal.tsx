@@ -32,7 +32,7 @@ export function ContractQuickCreateModal({
   const { activeContractTypes } = useContractTypes()
   const { activePaymentMethods } = usePaymentMethods()
   const { createContract, generateContractNumber, isCreating } = useContracts()
-  const { updateDeal } = useKanban()
+  const { updateDeal } = useKanban('')
 
 
   const [formData, setFormData] = useState({
@@ -67,6 +67,7 @@ export function ContractQuickCreateModal({
       const newContract = await createContract({
         contract: {
           company_id: parseInt(formData.company_id),
+          deal_id: dealId || null,
           client_id: clientId,
           contract_type_id: parseInt(formData.contract_type_id),
           template_id: null,

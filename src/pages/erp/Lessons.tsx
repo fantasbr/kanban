@@ -481,6 +481,7 @@ export function Lessons() {
 
       {/* Modals */}
       <LessonCreateModal
+        key={isCreateModalOpen ? 'open' : 'closed'}
         open={isCreateModalOpen}
         onOpenChange={setIsCreateModalOpen}
       />

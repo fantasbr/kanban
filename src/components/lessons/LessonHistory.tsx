@@ -45,7 +45,7 @@ export function LessonHistory({ clientId }: LessonHistoryProps) {
         .select('id')
         .eq('client_id', clientId)
 
-      const contractIds = (contracts || [] as any[]).map((c) => c.id)
+      const contractIds = (contracts || []).map((c: { id: number }) => c.id)
 
       if (contractIds.length === 0) {
         setLessons([])
@@ -58,7 +58,7 @@ export function LessonHistory({ clientId }: LessonHistoryProps) {
         .select('id')
         .in('contract_id', contractIds)
 
-      const itemIds = (items || [] as any[]).map((i) => i.id)
+      const itemIds = (items || []).map((i: { id: number }) => i.id)
 
       if (itemIds.length === 0) {
         setLessons([])
@@ -162,18 +162,18 @@ export function LessonHistory({ clientId }: LessonHistoryProps) {
                       </Badge>
                     </div>
 
-                    {/* Instructor */}
+                      {/* Instructor */}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <User className="h-3 w-3" />
-                      <span>{(lesson.instructors as any)?.full_name || 'Sem instrutor'}</span>
+                      <span>{lesson.instructors?.full_name || 'Sem instrutor'}</span>
                     </div>
 
                     {/* Vehicle */}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Car className="h-3 w-3" />
                       <span>
-                        {(lesson.vehicles as any)?.model || 'Sem veículo'} 
-                        {(lesson.vehicles as any)?.plate && ` • ${(lesson.vehicles as any).plate}`}
+                        {lesson.vehicles?.model || 'Sem veículo'} 
+                        {lesson.vehicles?.plate && ` • ${lesson.vehicles.plate}`}
                       </span>
                     </div>
                   </div>

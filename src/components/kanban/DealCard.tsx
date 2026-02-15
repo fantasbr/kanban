@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useNavigate } from 'react-router-dom'
-import { ExternalLink, Trash2, FileText } from 'lucide-react'
+import { ExternalLink, Trash2, FileText, UserCheck } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { useContracts } from '@/hooks/useContracts'
 
 interface DealCardProps {
   deal: Deal
+  baseProbability?: number
   onEdit: (deal: Deal) => void
   onDelete: (deal: Deal) => void
 }
@@ -22,7 +23,7 @@ const priorityConfig: Record<Priority, { variant: 'success' | 'warning' | 'dange
   high: { variant: 'danger', label: 'Alta' },
 }
 
-export function DealCard({ deal, onEdit, onDelete }: DealCardProps) {
+export function DealCard({ deal, baseProbability = 0, onEdit, onDelete }: DealCardProps) {
   const navigate = useNavigate()
   const { chatwootUrl } = useChatwootUrl()
   const { contracts } = useContracts()
@@ -42,6 +43,33 @@ export function DealCard({ deal, onEdit, onDelete }: DealCardProps) {
   }
 
   const priority = priorityConfig[deal.priority]
+
+  // Calculate Probability
+  const calculateProbability = () => {
+    if (!deal.stage_changed_at) return baseProbability
+
+    const daysInStage = Math.floor(
+      (new Date().getTime() - new Date(deal.stage_changed_at).getTime()) / (1000 * 60 * 60 * 24)
+    )
+    
+    // Degradation logic: 1% per day after 3 days
+    const gracePeriod = 3
+    const degradationRate = 1 // 1% per day
+    
+    const degradation = Math.max(0, daysInStage - gracePeriod) * degradationRate
+    const currentProbability = Math.max(0, baseProbability - degradation)
+    
+    return Math.round(currentProbability)
+  }
+
+  const probability = calculateProbability()
+
+  // Probability Color
+  const getProbabilityColor = (prob: number) => {
+    if (prob >= 75) return 'bg-green-100 text-green-800 border-green-200'
+    if (prob >= 40) return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+    return 'bg-red-100 text-red-800 border-red-200'
+  }
 
   const handleContractClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -105,36 +133,72 @@ export function DealCard({ deal, onEdit, onDelete }: DealCardProps) {
               </Button>
             </div>
             
-            {/* Deal Title */}
+            {/* Contact Name */}
             <h3 className="font-semibold text-sm line-clamp-2 text-slate-900">
-              {deal.title}
+              {deal.contacts?.name || 'Sem contato'}
             </h3>
             
-            {/* Value and Priority */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            {/* Company Name */}
+            {deal.companies && (
+              <p className="text-xs text-slate-600 mt-0.5">
+                {deal.companies.name}
+              </p>
+            )}
+            
+            {/* Contract Template */}
+            {deal.contract_templates && (
+              <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                <FileText className="h-3 w-3" />
+                {deal.contract_templates.name}
+              </p>
+            )}
+            
+            {/* Value and Badges */}
+            <div className="flex items-start justify-between pt-2 border-t border-slate-100">
               <span className="text-lg font-bold text-blue-600">
-                {formatCurrency(deal.deal_value_negotiated)}
+                {formatCurrency(
+                  deal.deal_items && deal.deal_items.length > 0
+                    ? deal.deal_items.reduce((sum, item) => sum + item.total_price, 0)
+                    : deal.deal_value_negotiated
+                )}
               </span>
-              <div className="flex items-center gap-1">
-                <Badge variant={priority.variant} className="font-medium">
-                  {priority.label}
-                </Badge>
-                {deal.existing_client_id && contracts.some(c => c.client_id === deal.existing_client_id && c.status === 'active') && (
-                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                    <FileText className="h-3 w-3 mr-1" />
-                    ERP
+              <div className="flex flex-col items-end gap-1">
+                {/* Prioridade */}
+                <div className="flex gap-1 mb-1">
+                  <Badge variant={priority.variant} className="font-medium text-[10px] h-5">
+                    {priority.label}
                   </Badge>
-                )}
-                {deal.needs_contract && deal.existing_client_id && (
-                  <Badge 
-                    variant="warning" 
-                    className="bg-amber-50 text-amber-700 border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors"
-                    onClick={handleContractClick}
-                  >
-                    <FileText className="h-3 w-3 mr-1" />
-                    Contrato Pendente
+                  {/* Probabilidade */}
+                  <Badge variant="outline" className={`font-medium text-[10px] h-5 ${getProbabilityColor(probability)}`}>
+                    {probability}%
                   </Badge>
-                )}
+                </div>
+                
+                {/* Status Badges */}
+                <div className="flex flex-wrap gap-1 justify-end">
+                  {deal.existing_client_id && (
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                      <UserCheck className="h-3 w-3 mr-1" />
+                      Cliente
+                    </Badge>
+                  )}
+                  {deal.existing_client_id && contracts.some(c => c.client_id === deal.existing_client_id && c.status === 'active') && (
+                    <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
+                      <FileText className="h-3 w-3 mr-1" />
+                      Contrato
+                    </Badge>
+                  )}
+                  {deal.needs_contract && deal.existing_client_id && (
+                    <Badge 
+                      variant="warning" 
+                      className="bg-amber-50 text-amber-700 border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors text-xs"
+                      onClick={handleContractClick}
+                    >
+                      <FileText className="h-3 w-3 mr-1" />
+                      Pendente
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
           </div>

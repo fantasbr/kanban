@@ -8,11 +8,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { Loader2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import type { Contract } from '@/types/database'
 
 interface AddExtraCreditsModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   contractId: number
+}
+
+interface CatalogItem {
+  id: number
+  name: string
+  default_unit_price: number
+  vehicle_category: 'car' | 'motorcycle' | 'bus' | 'truck'
+  is_lesson: boolean
+  is_active: boolean
 }
 
 export function AddExtraCreditsModal({ open, onOpenChange, contractId }: AddExtraCreditsModalProps) {
@@ -32,7 +42,7 @@ export function AddExtraCreditsModal({ open, onOpenChange, contractId }: AddExtr
         .order('name')
 
       if (error) throw error
-      return data || []
+      return (data as unknown as CatalogItem[]) || []
     },
   })
 
@@ -47,12 +57,12 @@ export function AddExtraCreditsModal({ open, onOpenChange, contractId }: AddExtr
         .single()
 
       if (error) throw error
-      return data
+      return data as Contract
     },
     enabled: open,
   })
 
-  const selectedItem = catalogItems.find((item: any) => item.id.toString() === selectedCatalogItem)
+  const selectedItem = catalogItems.find((item) => item.id.toString() === selectedCatalogItem)
   const totalPrice = selectedItem ? selectedItem.default_unit_price * parseInt(quantity || '0') : 0
 
   // Mutation to add extra credits
@@ -66,7 +76,7 @@ export function AddExtraCreditsModal({ open, onOpenChange, contractId }: AddExtr
         throw new Error('Informações do contrato não encontradas')
       }
 
-      const item = catalogItems.find((i: any) => i.id.toString() === selectedCatalogItem)
+      const item = catalogItems.find((i) => i.id.toString() === selectedCatalogItem)
       if (!item) throw new Error('Item não encontrado')
 
       const qty = parseInt(quantity)
@@ -85,7 +95,7 @@ export function AddExtraCreditsModal({ open, onOpenChange, contractId }: AddExtr
           unit_price: item.default_unit_price,
           total_price: total,
           is_extra: true,
-        })
+        } as never)
         .select()
         .single()
 
@@ -105,7 +115,7 @@ export function AddExtraCreditsModal({ open, onOpenChange, contractId }: AddExtr
           due_date: dueDate.toISOString().split('T')[0],
           status: 'pending',
           installment_number: 1,
-        })
+        } as never)
 
       if (receivableError) throw receivableError
 
@@ -121,7 +131,7 @@ export function AddExtraCreditsModal({ open, onOpenChange, contractId }: AddExtr
       setSelectedCatalogItem('')
       setQuantity('1')
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast.error(error.message || 'Erro ao adicionar aulas extras')
     },
   })
@@ -151,13 +161,14 @@ export function AddExtraCreditsModal({ open, onOpenChange, contractId }: AddExtr
                   <SelectValue placeholder="Selecione o tipo de aula" />
                 </SelectTrigger>
                 <SelectContent>
-                  {catalogItems.map((item: any) => {
-                    const categoryLabel = {
+                  {catalogItems.map((item) => {
+                    const labels: Record<string, string> = {
                       car: '🚗 Carro',
                       motorcycle: '🏍️ Moto',
                       bus: '🚌 Ônibus',
                       truck: '🚚 Caminhão'
-                    }[item.vehicle_category] || ''
+                    }
+                    const categoryLabel = labels[item.vehicle_category] || ''
 
                     return (
                       <SelectItem key={item.id} value={item.id.toString()}>
@@ -179,13 +190,16 @@ export function AddExtraCreditsModal({ open, onOpenChange, contractId }: AddExtr
               </Select>
               {selectedItem?.vehicle_category && (
                 <p className="text-xs text-muted-foreground">
-                  Categoria: {
-                    {
-                      car: '🚗 Carro',
-                      motorcycle: '🏍️ Moto',
-                      bus: '🚌 Ônibus',
-                      truck: '🚚 Caminhão'
-                    }[selectedItem.vehicle_category]
+                   {
+                    (() => {
+                      const labels: Record<string, string> = {
+                        car: '🚗 Carro',
+                        motorcycle: '🏍️ Moto',
+                        bus: '🚌 Ônibus',
+                        truck: '🚚 Caminhão'
+                      }
+                      return labels[selectedItem.vehicle_category] || selectedItem.vehicle_category
+                    })()
                   }
                 </p>
               )}

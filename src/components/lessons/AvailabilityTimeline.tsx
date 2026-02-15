@@ -16,7 +16,7 @@ interface TimeSlot {
   lesson?: Lesson
 }
 
-const dayOfWeekMap: Record<number, keyof Instructor['weekly_schedule']> = {
+const dayOfWeekMap: Record<number, keyof NonNullable<Instructor['weekly_schedule']>> = {
   0: 'sunday',
   1: 'monday',
   2: 'tuesday',
