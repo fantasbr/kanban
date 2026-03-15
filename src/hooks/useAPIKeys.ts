@@ -21,7 +21,9 @@ export function useAPIKeys() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('api_keys')
-        .select('*')
+        .select(
+          'id, name, key_prefix, permissions, is_active, last_used_at, expires_at, created_by, created_at'
+        )
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -70,7 +72,9 @@ export function useAPIKeys() {
           permissions,
           expires_at: expiresAt,
         } as never)
-        .select()
+        .select(
+          'id, name, key_prefix, permissions, is_active, last_used_at, expires_at, created_by, created_at'
+        )
         .single()
 
       if (error) throw error

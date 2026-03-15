@@ -13,7 +13,8 @@ export function useSettings() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('app_settings')
-        .select('*')
+        .select('key, value')
+        .neq('key', 'chatwoot_access_token')
 
       if (error) throw error
       
@@ -51,6 +52,6 @@ export function useSettings() {
   return {
     settings: settingsQuery.data ?? {},
     isLoading: settingsQuery.isLoading,
-    updateSetting: updateSettingMutation.mutate,
+    updateSetting: updateSettingMutation.mutateAsync,
   }
 }

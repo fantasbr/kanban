@@ -1,0 +1,117 @@
+﻿[93m[4mUnused files[24m[39m (24)
+src/App.css                                         
+src/hooks/useAuditLog.ts                            
+src/hooks/useAvailability.ts                        
+src/lib/testAuth.ts                                 
+supabase/functions/api-crm/index.ts                 
+supabase/functions/api-erp/index.ts                 
+supabase/functions/sync-chatwoot-contact/index.ts   
+supabase/functions/webhook-processor/index.ts       
+supabase/functions/_shared/auth.ts                  
+supabase/functions/_shared/cors.ts                  
+supabase/functions/_shared/errors.ts                
+supabase/functions/_shared/logger.ts                
+supabase/functions/_shared/types.ts                 
+src/components/clients/ClientLessonsTab.tsx         
+src/components/contract/ContractStatusHistory.tsx   
+src/components/kanban/DealTemplateSelector.tsx      
+src/components/lessons/AvailabilityTimeline.tsx     
+src/components/lessons/ClientHeader.tsx             
+src/components/lessons/ClientSearch.tsx             
+src/components/lessons/LessonHistory.tsx            
+src/components/lessons/QuickScheduleConfirmation.tsx
+src/components/modals/ClientVerificationModal.tsx   
+src/components/modals/ContractQuickCreateModal.tsx  
+src/lib/__tests__/logger.test.ts                    
+[93m[4mUnused dependencies[24m[39m (4)
+@fullcalendar/daygrid  package.json:16:6
+@hookform/resolvers    package.json:20:6
+react-hook-form        package.json:44:6
+zod                    package.json:49:6
+[93m[4mUnlisted dependencies[24m[39m (1)
+[90m[39m[97m@fullcalendar/core[39m[90m/locales/pt-br[39m  src/components/lessons/LessonCalendar.tsx:5:25
+[93m[4mUnused exports[24m[39m (31)
+supabase                            src/lib/db.ts:106:10                     
+default                             src/lib/logger.ts:199:16                 
+useDealTitles             function  src/hooks/useDealTitles.ts:5:17          
+formatCPF                 function  src/lib/validators.ts:63:17              
+validateCNPJ              function  src/lib/validators.ts:78:17              
+formatCNPJ                function  src/lib/validators.ts:146:17             
+CardFooter                          src/components/ui/card.tsx:76:28         
+DialogPortal                        src/components/ui/dialog.tsx:111:3       
+DialogOverlay                       src/components/ui/dialog.tsx:112:3       
+DialogClose                         src/components/ui/dialog.tsx:113:3       
+DialogTrigger                       src/components/ui/dialog.tsx:114:3       
+badgeVariants                       src/components/ui/badge.tsx:43:17        
+AlertDialogPortal                   src/components/ui/alert-dialog.tsx:129:3 
+AlertDialogOverlay                  src/components/ui/alert-dialog.tsx:130:3 
+AlertDialogTrigger                  src/components/ui/alert-dialog.tsx:131:3 
+SelectGroup                         src/components/ui/select.tsx:148:3       
+SelectLabel                         src/components/ui/select.tsx:152:3       
+SelectSeparator                     src/components/ui/select.tsx:154:3       
+SelectScrollUpButton                src/components/ui/select.tsx:155:3       
+SelectScrollDownButton              src/components/ui/select.tsx:156:3       
+AvatarImage                         src/components/ui/avatar.tsx:48:18       
+DropdownMenuCheckboxItem            src/components/ui/dropdown-menu.tsx:187:3
+DropdownMenuRadioItem               src/components/ui/dropdown-menu.tsx:188:3
+DropdownMenuLabel                   src/components/ui/dropdown-menu.tsx:189:3
+DropdownMenuShortcut                src/components/ui/dropdown-menu.tsx:191:3
+DropdownMenuGroup                   src/components/ui/dropdown-menu.tsx:192:3
+DropdownMenuPortal                  src/components/ui/dropdown-menu.tsx:193:3
+DropdownMenuSub                     src/components/ui/dropdown-menu.tsx:194:3
+DropdownMenuSubContent              src/components/ui/dropdown-menu.tsx:195:3
+DropdownMenuSubTrigger              src/components/ui/dropdown-menu.tsx:196:3
+DropdownMenuRadioGroup              src/components/ui/dropdown-menu.tsx:197:3
+[93m[4mUnused exported types[24m[39m (49)
+UserPermissions         interface  src/hooks/useAuth.tsx:7:18             
+VehicleCompany          interface  src/types/database.ts:549:18           
+InstructorCompany       interface  src/types/database.ts:594:18           
+LessonAudit             interface  src/types/database.ts:649:18           
+AvailabilitySlot        interface  src/types/database.ts:692:18           
+CalendarEvent           interface  src/types/database.ts:699:18           
+CatalogItem             interface  src/hooks/useCatalogItems.ts:4:18      
+ErrorResponse           interface  src/types/supabase-helpers.ts:24:18    
+ChartDataPoint          interface  src/types/supabase-helpers.ts:60:18    
+FileUploadEvent         interface  src/types/supabase-helpers.ts:74:18    
+RowWithJoins            type       src/types/supabase-helpers.ts:133:13   
+ContractItemUpdate      type       src/types/supabase-helpers.ts:143:13   
+ReceiptUpdate           type       src/types/supabase-helpers.ts:149:13   
+ContractTemplateInsert  type       src/types/supabase-helpers.ts:158:13   
+ContractTemplateUpdate  type       src/types/supabase-helpers.ts:159:13   
+InstructorInsert        type       src/types/supabase-helpers.ts:162:13   
+InstructorUpdate        type       src/types/supabase-helpers.ts:163:13   
+ContactInsert           type       src/types/supabase-helpers.ts:168:13   
+ContactUpdate           type       src/types/supabase-helpers.ts:169:13   
+DealInsert              type       src/types/supabase-helpers.ts:170:13   
+DealUpdate              type       src/types/supabase-helpers.ts:171:13   
+DealItemInsert          type       src/types/supabase-helpers.ts:172:13   
+DealItemUpdate          type       src/types/supabase-helpers.ts:173:13   
+ContractsAuditItem      interface  src/hooks/useContractsAudit.ts:6:18    
+ContractsAuditAction    type       src/hooks/useContractsAudit.ts:19:13   
+ContractTemplate        interface  src/hooks/useContractTemplates.ts:5:18 
+TemplateItem            interface  src/hooks/useContractTemplates.ts:14:18
+TemplateWithItems       interface  src/hooks/useContractTemplates.ts:24:18
+CrmAuditItem            interface  src/hooks/useCrmAudit.ts:5:18          
+CrmAuditAction          type       src/hooks/useCrmAudit.ts:18:13         
+CrmEntityType           type       src/hooks/useCrmAudit.ts:19:13         
+ErpAuditItem            interface  src/hooks/useErpAudit.ts:5:18          
+ErpAuditAction          type       src/hooks/useErpAudit.ts:18:13         
+ErpEntityType           type       src/hooks/useErpAudit.ts:19:13         
+FinancialAuditItem      interface  src/hooks/useFinancialAudit.ts:8:18    
+FinancialAuditAction    type       src/hooks/useFinancialAudit.ts:21:13   
+FinancialEntityType     type       src/hooks/useFinancialAudit.ts:22:13   
+ReportFilters           interface  src/hooks/useLessonReports.ts:4:18     
+InstructorReportItem    interface  src/hooks/useLessonReports.ts:11:18    
+VehicleReportItem       interface  src/hooks/useLessonReports.ts:22:18    
+FinancialReportData     interface  src/hooks/useLessonReports.ts:31:18    
+ClientReportItem        interface  src/hooks/useLessonReports.ts:37:18    
+LessonsAuditItem        interface  src/hooks/useLessonsAudit.ts:5:18      
+LessonsAuditAction      type       src/hooks/useLessonsAudit.ts:18:13     
+PendingDealWon          interface  src/lib/sessionHelpers.ts:7:18         
+ButtonProps             interface  src/components/ui/button.tsx:37:18     
+BadgeProps              interface  src/components/ui/badge.tsx:32:18      
+TextareaProps           type       src/components/ui/textarea.tsx:5:13    
+CalendarProps           type       src/components/ui/calendar.tsx:9:13    
+[93m[4mDuplicate exports[24m[39m (1)
+logger|default  src/lib/logger.ts
+[33m[4mConfiguration hints[24m (1)[39m

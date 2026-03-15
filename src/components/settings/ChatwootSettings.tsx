@@ -11,7 +11,7 @@ export function ChatwootSettings() {
   const { settings, updateSetting } = useSettings()
   const [url, setUrl] = useState(settings.chatwoot_url || '')
   const [accountId, setAccountId] = useState(settings.chatwoot_account_id || '')
-  const [accessToken, setAccessToken] = useState(settings.chatwoot_access_token || '')
+  const [accessToken, setAccessToken] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
   // Update local state when settings load from server
@@ -19,7 +19,6 @@ export function ChatwootSettings() {
     if (!isSaving) {
       if (settings.chatwoot_url) setUrl(settings.chatwoot_url)
       if (settings.chatwoot_account_id) setAccountId(settings.chatwoot_account_id)
-      if (settings.chatwoot_access_token) setAccessToken(settings.chatwoot_access_token)
     }
   }, [settings, isSaving])
 
@@ -29,11 +28,11 @@ export function ChatwootSettings() {
       if (url) await updateSetting({ key: 'chatwoot_url', value: url })
       if (accountId) await updateSetting({ key: 'chatwoot_account_id', value: accountId })
       if (accessToken) await updateSetting({ key: 'chatwoot_access_token', value: accessToken })
-      
-      toast.success('Configurações do Chatwoot salvas com sucesso!')
+
+      toast.success('Configuracoes do Chatwoot salvas com sucesso!')
     } catch (error) {
       console.error('Erro ao salvar:', error)
-      toast.error('Erro ao salvar configurações')
+      toast.error('Erro ao salvar configuracoes')
     } finally {
       setIsSaving(false)
     }
@@ -53,9 +52,9 @@ export function ChatwootSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Integração Chatwoot</CardTitle>
+        <CardTitle>Integracao Chatwoot</CardTitle>
         <p className="text-sm text-slate-500 mt-1">
-          Configure a integração com o Chatwoot para sincronização de contatos
+          Configure a integracao com o Chatwoot para sincronizacao de contatos
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -71,10 +70,10 @@ export function ChatwootSettings() {
             className="h-11"
           />
           {!isValid && url && (
-            <p className="text-sm text-red-500">URL inválida. Deve começar com http:// ou https://</p>
+            <p className="text-sm text-red-500">URL invalida. Deve comecar com http:// ou https://</p>
           )}
           <p className="text-xs text-slate-500">
-            URL base da sua instalação do Chatwoot
+            URL base da sua instalacao do Chatwoot
           </p>
         </div>
 
@@ -93,7 +92,7 @@ export function ChatwootSettings() {
             className="h-11"
           />
           <p className="text-xs text-slate-500">
-            ID da conta no Chatwoot (geralmente visível na URL após /app/accounts/<b>ID</b>/...)
+            ID da conta no Chatwoot (geralmente visivel na URL apos /app/accounts/&lt;ID&gt;/...)
           </p>
         </div>
 
@@ -112,7 +111,10 @@ export function ChatwootSettings() {
             className="h-11 font-mono"
           />
           <p className="text-xs text-slate-500">
-            Token de acesso da API do Chatwoot (Configurações de Perfil {'>'} Token de Acesso)
+            Token de acesso da API do Chatwoot (Configuracoes de Perfil {'>'} Token de Acesso)
+          </p>
+          <p className="text-xs text-amber-600">
+            Por seguranca, o token atual nao e exibido. Preencha apenas para atualizar.
           </p>
         </div>
 
@@ -127,12 +129,12 @@ export function ChatwootSettings() {
         )}
 
         <div className="pt-2">
-          <Button 
-            onClick={handleSave} 
+          <Button
+            onClick={handleSave}
             disabled={!isValid || isSaving}
             className="w-full sm:w-auto"
           >
-            {isSaving ? 'Salvando...' : 'Salvar Configuração'}
+            {isSaving ? 'Salvando...' : 'Salvar Configuracao'}
           </Button>
         </div>
       </CardContent>

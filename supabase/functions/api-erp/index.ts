@@ -3,26 +3,32 @@ import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 import { authenticateRequest, requirePermission } from '../_shared/auth.ts'
 import { logRequest } from '../_shared/logger.ts'
+import { methodNotAllowed, normalizeApiError, notFound } from '../_shared/errors.ts'
 import type { ApiResponse, ApiKey } from '../_shared/types.ts'
 
 serve(async (req) => {
   const startTime = Date.now()
-  
+
   const corsResponse = handleCors(req)
   if (corsResponse) return corsResponse
 
   let statusCode = 200
   let responseBody: ApiResponse = {}
   let errorMessage: string | null = null
+  let path = 'unknown'
+  const method = req.method
+  let apiKey: ApiKey | null = null
+  let supabaseClient: SupabaseClient | null = null
 
   try {
-    const { apiKey, supabase } = await authenticateRequest(req)
-    
-    const url = new URL(req.url)
-    const path = url.pathname.replace('/api-erp', '')
-    const method = req.method
+    const authData = await authenticateRequest(req)
+    apiKey = authData.apiKey
+    supabaseClient = authData.supabase
+    const supabase = authData.supabase
 
-    // Roteamento
+    const url = new URL(req.url)
+    path = url.pathname.replace('/api-erp', '')
+
     if (path.startsWith('/clients')) {
       responseBody = await handleClients(req, supabase, apiKey, path, method)
     } else if (path.startsWith('/contracts')) {
@@ -30,12 +36,18 @@ serve(async (req) => {
     } else if (path.startsWith('/receivables')) {
       responseBody = await handleReceivables(req, supabase, apiKey, path, method)
     } else {
-      statusCode = 404
-      responseBody = { error: 'Not found' }
+      notFound()
     }
+  } catch (error) {
+    const normalizedError = normalizeApiError(error)
+    errorMessage = normalizedError.message
+    statusCode = normalizedError.status
+    responseBody = { error: normalizedError.message }
+  }
 
+  if (supabaseClient) {
     await logRequest(
-      supabase,
+      supabaseClient,
       apiKey?.id || null,
       path,
       method,
@@ -44,25 +56,15 @@ serve(async (req) => {
       responseBody,
       errorMessage,
       Date.now() - startTime
-    )
-
-    return new Response(JSON.stringify(responseBody), {
-      status: statusCode,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  } catch (error) {
-    const err = error as Error
-    errorMessage = err.message
-    statusCode = err.message === 'Unauthorized' ? 401 : 
-                 err.message.startsWith('Forbidden') ? 403 : 500
-    
-    responseBody = { error: err.message }
-
-    return new Response(JSON.stringify(responseBody), {
-      status: statusCode,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    ).catch((logError: unknown) => {
+      console.error('Failed to write API log:', logError)
     })
   }
+
+  return new Response(JSON.stringify(responseBody), {
+    status: statusCode,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
 })
 
 async function handleClients(req: Request, supabase: SupabaseClient, apiKey: ApiKey | null, path: string, method: string): Promise<ApiResponse> {
@@ -93,7 +95,7 @@ async function handleClients(req: Request, supabase: SupabaseClient, apiKey: Api
     return { data, total: data?.length || 0 }
   }
 
-  // GET /clients/:id - Buscar cliente específico
+  // GET /clients/:id - Buscar cliente especifico
   const getMatch = path.match(/^\/clients\/(\d+)$/)
   if (method === 'GET' && getMatch) {
     requirePermission(apiKey, 'erp:read')
@@ -126,7 +128,18 @@ async function handleClients(req: Request, supabase: SupabaseClient, apiKey: Api
     return { data, message: 'Client created successfully' }
   }
 
-  throw new Error('Method not allowed')
+  if (path === '/clients') {
+    methodNotAllowed()
+  }
+
+  if (path.startsWith('/clients/')) {
+    if (/^\/clients\/\d+$/.test(path)) {
+      methodNotAllowed()
+    }
+    notFound()
+  }
+
+  notFound()
 }
 
 async function handleContracts(req: Request, supabase: SupabaseClient, apiKey: ApiKey | null, path: string, method: string): Promise<ApiResponse> {
@@ -161,7 +174,7 @@ async function handleContracts(req: Request, supabase: SupabaseClient, apiKey: A
     return { data, total: data?.length || 0 }
   }
 
-  // GET /contracts/:id - Buscar contrato específico
+  // GET /contracts/:id - Buscar contrato especifico
   const getMatch = path.match(/^\/contracts\/(\d+)$/)
   if (method === 'GET' && getMatch) {
     requirePermission(apiKey, 'erp:read')
@@ -178,7 +191,18 @@ async function handleContracts(req: Request, supabase: SupabaseClient, apiKey: A
     return { data }
   }
 
-  throw new Error('Method not allowed')
+  if (path === '/contracts') {
+    methodNotAllowed()
+  }
+
+  if (path.startsWith('/contracts/')) {
+    if (/^\/contracts\/\d+$/.test(path)) {
+      methodNotAllowed()
+    }
+    notFound()
+  }
+
+  notFound()
 }
 
 async function handleReceivables(req: Request, supabase: SupabaseClient, apiKey: ApiKey | null, path: string, method: string): Promise<ApiResponse> {
@@ -218,7 +242,7 @@ async function handleReceivables(req: Request, supabase: SupabaseClient, apiKey:
     return { data, total: data?.length || 0 }
   }
 
-  // GET /receivables/:id - Buscar parcela específica
+  // GET /receivables/:id - Buscar parcela especifica
   const getMatch = path.match(/^\/receivables\/(\d+)$/)
   if (method === 'GET' && getMatch) {
     requirePermission(apiKey, 'erp:read')
@@ -235,5 +259,16 @@ async function handleReceivables(req: Request, supabase: SupabaseClient, apiKey:
     return { data }
   }
 
-  throw new Error('Method not allowed')
+  if (path === '/receivables') {
+    methodNotAllowed()
+  }
+
+  if (path.startsWith('/receivables/')) {
+    if (/^\/receivables\/\d+$/.test(path)) {
+      methodNotAllowed()
+    }
+    notFound()
+  }
+
+  notFound()
 }

@@ -3,28 +3,32 @@ import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders, handleCors } from '../_shared/cors.ts'
 import { authenticateRequest, requirePermission } from '../_shared/auth.ts'
 import { logRequest } from '../_shared/logger.ts'
+import { methodNotAllowed, normalizeApiError, notFound } from '../_shared/errors.ts'
 import type { ApiResponse, ApiKey } from '../_shared/types.ts'
 
 serve(async (req) => {
   const startTime = Date.now()
-  
-  // Handle CORS
+
   const corsResponse = handleCors(req)
   if (corsResponse) return corsResponse
 
   let statusCode = 200
   let responseBody: ApiResponse = {}
   let errorMessage: string | null = null
+  let path = 'unknown'
+  const method = req.method
+  let apiKey: ApiKey | null = null
+  let supabaseClient: SupabaseClient | null = null
 
   try {
-    // Autenticar
-    const { apiKey, supabase } = await authenticateRequest(req)
-    
-    const url = new URL(req.url)
-    const path = url.pathname.replace('/api-crm', '')
-    const method = req.method
+    const authData = await authenticateRequest(req)
+    apiKey = authData.apiKey
+    supabaseClient = authData.supabase
+    const supabase = authData.supabase
 
-    // Roteamento
+    const url = new URL(req.url)
+    path = url.pathname.replace('/api-crm', '')
+
     if (path.startsWith('/deals')) {
       responseBody = await handleDeals(req, supabase, apiKey, path, method)
     } else if (path.startsWith('/contacts')) {
@@ -32,13 +36,18 @@ serve(async (req) => {
     } else if (path.startsWith('/pipelines')) {
       responseBody = await handlePipelines(req, supabase, apiKey, path, method)
     } else {
-      statusCode = 404
-      responseBody = { error: 'Not found' }
+      notFound()
     }
+  } catch (error) {
+    const normalizedError = normalizeApiError(error)
+    errorMessage = normalizedError.message
+    statusCode = normalizedError.status
+    responseBody = { error: normalizedError.message }
+  }
 
-    // Log da requisição
+  if (supabaseClient) {
     await logRequest(
-      supabase,
+      supabaseClient,
       apiKey?.id || null,
       path,
       method,
@@ -47,25 +56,15 @@ serve(async (req) => {
       responseBody,
       errorMessage,
       Date.now() - startTime
-    )
-
-    return new Response(JSON.stringify(responseBody), {
-      status: statusCode,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  } catch (error) {
-    const err = error as Error
-    errorMessage = err.message
-    statusCode = err.message === 'Unauthorized' ? 401 : 
-                 err.message.startsWith('Forbidden') ? 403 : 500
-    
-    responseBody = { error: err.message }
-
-    return new Response(JSON.stringify(responseBody), {
-      status: statusCode,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    ).catch((logError: unknown) => {
+      console.error('Failed to write API log:', logError)
     })
   }
+
+  return new Response(JSON.stringify(responseBody), {
+    status: statusCode,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
 })
 
 // ============================================
@@ -136,7 +135,7 @@ async function handleDeals(req: Request, supabase: SupabaseClient, apiKey: ApiKe
     return { data, message: 'Deal updated successfully' }
   }
 
-  // GET /deals/:id - Buscar deal específico
+  // GET /deals/:id - Buscar deal especifico
   const getMatch = path.match(/^\/deals\/([a-f0-9-]+)$/)
   if (method === 'GET' && getMatch) {
     requirePermission(apiKey, 'crm:read')
@@ -153,7 +152,18 @@ async function handleDeals(req: Request, supabase: SupabaseClient, apiKey: ApiKe
     return { data }
   }
 
-  throw new Error('Method not allowed')
+  if (path === '/deals') {
+    methodNotAllowed()
+  }
+
+  if (path.startsWith('/deals/')) {
+    if (/^\/deals\/[a-f0-9-]+$/.test(path)) {
+      methodNotAllowed()
+    }
+    notFound()
+  }
+
+  notFound()
 }
 
 async function handleContacts(req: Request, supabase: SupabaseClient, apiKey: ApiKey | null, path: string, method: string): Promise<ApiResponse> {
@@ -199,7 +209,7 @@ async function handleContacts(req: Request, supabase: SupabaseClient, apiKey: Ap
     return { data, message: 'Contact created successfully' }
   }
 
-  // GET /contacts/:id - Buscar contato específico
+  // GET /contacts/:id - Buscar contato especifico
   const getMatch = path.match(/^\/contacts\/(\d+)$/)
   if (method === 'GET' && getMatch) {
     requirePermission(apiKey, 'crm:read')
@@ -216,7 +226,18 @@ async function handleContacts(req: Request, supabase: SupabaseClient, apiKey: Ap
     return { data }
   }
 
-  throw new Error('Method not allowed')
+  if (path === '/contacts') {
+    methodNotAllowed()
+  }
+
+  if (path.startsWith('/contacts/')) {
+    if (/^\/contacts\/\d+$/.test(path)) {
+      methodNotAllowed()
+    }
+    notFound()
+  }
+
+  notFound()
 }
 
 async function handlePipelines(req: Request, supabase: SupabaseClient, apiKey: ApiKey | null, path: string, method: string): Promise<ApiResponse> {
@@ -234,7 +255,7 @@ async function handlePipelines(req: Request, supabase: SupabaseClient, apiKey: A
     return { data, total: data?.length || 0 }
   }
 
-  // GET /pipelines/:id - Buscar pipeline específico
+  // GET /pipelines/:id - Buscar pipeline especifico
   const getMatch = path.match(/^\/pipelines\/([a-f0-9-]+)$/)
   if (method === 'GET' && getMatch) {
     requirePermission(apiKey, 'crm:read')
@@ -251,5 +272,16 @@ async function handlePipelines(req: Request, supabase: SupabaseClient, apiKey: A
     return { data }
   }
 
-  throw new Error('Method not allowed')
+  if (path === '/pipelines') {
+    methodNotAllowed()
+  }
+
+  if (path.startsWith('/pipelines/')) {
+    if (/^\/pipelines\/[a-f0-9-]+$/.test(path)) {
+      methodNotAllowed()
+    }
+    notFound()
+  }
+
+  notFound()
 }

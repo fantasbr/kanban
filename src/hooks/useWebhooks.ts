@@ -7,7 +7,7 @@ interface WebhookSubscription {
   name: string
   url: string
   events: string[]
-  secret: string
+  secret?: string
   is_active: boolean
   retry_count: number
   timeout_seconds: number
@@ -15,6 +15,13 @@ interface WebhookSubscription {
   created_at: string
   updated_at: string
 }
+
+type CreatedWebhook = WebhookSubscription & {
+  secret: string
+}
+
+const WEBHOOK_PUBLIC_COLUMNS =
+  'id, api_key_id, name, url, events, is_active, retry_count, timeout_seconds, headers, created_at, updated_at'
 
 export function useWebhooks() {
   const queryClient = useQueryClient()
@@ -24,7 +31,7 @@ export function useWebhooks() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('webhook_subscriptions')
-        .select('*')
+        .select(WEBHOOK_PUBLIC_COLUMNS)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -49,7 +56,7 @@ export function useWebhooks() {
       retryCount?: number
       timeoutSeconds?: number
       headers?: Record<string, string>
-    }) => {
+    }): Promise<CreatedWebhook> => {
       // Gerar secret aleatório para HMAC
       const array = new Uint8Array(32)
       crypto.getRandomValues(array)
@@ -69,7 +76,7 @@ export function useWebhooks() {
           timeout_seconds: timeoutSeconds,
           headers,
         } as never)
-        .select()
+        .select(WEBHOOK_PUBLIC_COLUMNS)
         .single()
 
       if (error) throw error

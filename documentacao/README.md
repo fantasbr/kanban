@@ -18,6 +18,7 @@ Para desenvolvedores e mantenedores:
 
 - **[Guia de Instalação (Setup)](./tecnica/SETUP.md)**: Como configurar e rodar o projeto localmente.
 - **[Documentação da API](./tecnica/API_DOCUMENTATION.md)**: Endpoints, Schemas e Integrações.
+- **[Sprint 0 - Pós-Migração](./tecnica/SPRINT0_POS_MIGRACAO.md)**: Checklist operacional após aplicar a migration de segurança.
 - **[Arquitetura](./tecnica/ARQUITETURA.md)**: (Em breve) Visão geral da estrutura de código.
 
 ### Planejamento e Futuro

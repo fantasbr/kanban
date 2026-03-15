@@ -28,7 +28,6 @@ import type { Client, Contact } from "@/types/database";
 import { getPendingDealWon, clearPendingDealWon } from "@/lib/sessionHelpers";
 
 // Component to show linked contact info
-// ContactInfoCard removed (duplicate of component in ClientFormDialog)
 
 export function Clients() {
   const navigate = useNavigate();
@@ -70,7 +69,7 @@ export function Clients() {
     setIsDialogOpen(true);
   };
 
-  // handleCreateContact and handleUpdateContact removed (legacy)
+
 
   const handleContactCreated = (contactId: number) => {
     setCreatedContactId(contactId);
@@ -87,7 +86,7 @@ export function Clients() {
     updateContact({ contactId, updates });
   };
 
-  // handleSubmit removed (legacy)
+
 
   // Filter clients by search term
   const filteredClients = activeClients.filter(
@@ -311,7 +310,7 @@ export function Clients() {
         />
       )}
 
-      {/* Legacy Dialog removed */}
+
 
       {/* Contact Create Modal - Modo Balcão */}
       <ContactCreateModal

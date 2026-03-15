@@ -21,13 +21,18 @@ cp .env.example .env
 
 # Iniciar servidor de desenvolvimento
 npm run dev
+
+# Verificar erros de lint (agora com suporte a globais)
+npm run lint
+
+# Build de produção (TypeScript + Vite)
+npm run build
 ```
 
 ## 🔧 Configuração
 
 1. Crie um projeto no [Supabase](https://supabase.com)
 2. Configure as variáveis de ambiente no arquivo `.env`:
-
    - `VITE_SUPABASE_URL`: URL do seu projeto Supabase
    - `VITE_SUPABASE_ANON_KEY`: Chave anônima do Supabase
 

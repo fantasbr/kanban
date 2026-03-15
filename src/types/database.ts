@@ -1,4 +1,6 @@
 export type Priority = "low" | "medium" | "high";
+export type TipoServico = "Carro" | "Moto" | "PCD" | "Carreta";
+export type Urgencia = "imediata" | "semana" | "mes" | "sem_pressa";
 
 export interface Pipeline {
   id: string;
@@ -46,6 +48,14 @@ export interface Deal {
   chatwoot_conversation_id: string | null;
   ai_summary: string | null;
   notes: string | null;  // NOVO: Observações da negociação
+  decisor_imediato?: string | null;
+  tipo_servico?: TipoServico | null;
+  local_servico?: string | null;
+  experiencia_previa?: string | null;
+  urgencia?: Urgencia | null;
+  forma_pagamento?: string | null;
+  ponto_decisao?: string | null;
+  objecao_principal?: string | null;
   needs_contract: boolean;
   existing_client_id: number | null;
   contract_template_id: number | null;  // Template de contrato sugerido

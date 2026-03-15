@@ -36,6 +36,7 @@ import { ptBR } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '@/hooks/useAuth'
 
 interface ContactDetailsModalProps {
   contact: Contact | null
@@ -52,6 +53,7 @@ export function ContactDetailsModal({
 }: ContactDetailsModalProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { permissions } = useAuth()
   const { chatwootUrl } = useChatwootUrl()
   const [activeTab, setActiveTab] = useState('info')
   const [isSyncing, setIsSyncing] = useState(false)
@@ -61,6 +63,11 @@ export function ContactDetailsModal({
   if (!contact) return null
 
   const handleSyncChatwoot = async () => {
+    if (!permissions.isAdmin) {
+      toast.error('Apenas administradores podem sincronizar contatos com Chatwoot.')
+      return
+    }
+
     if (!contact.phone) {
       toast.error('O contato precisa ter um telefone para sincronizar.')
       return
@@ -84,7 +91,19 @@ export function ContactDetailsModal({
       // Então fechar é mais seguro para garantir refresh visual.
     } catch (error) {
       console.error('Erro ao sincronizar:', error)
-      toast.error('Erro ao sincronizar com Chatwoot. Verifique as configurações.')
+      const errorMessage =
+        error instanceof Error ? error.message : 'Erro ao sincronizar com Chatwoot.'
+
+      if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+        toast.error('Apenas administradores podem sincronizar com Chatwoot.')
+      } else if (
+        errorMessage.includes('401') ||
+        errorMessage.includes('Unauthorized')
+      ) {
+        toast.error('Sessão inválida para sincronizar com Chatwoot.')
+      } else {
+        toast.error('Erro ao sincronizar com Chatwoot. Verifique as configurações.')
+      }
     } finally {
       setIsSyncing(false)
     }
@@ -156,10 +175,10 @@ export function ContactDetailsModal({
                   <Badge variant="secondary">
                     Chatwoot ID: {contact.chatwoot_id}
                   </Badge>
-                ) : (
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
+                ) : permissions.isAdmin ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
                     className="h-7 text-xs gap-1"
                     onClick={handleSyncChatwoot}
                     disabled={isSyncing}
@@ -171,6 +190,8 @@ export function ContactDetailsModal({
                     )}
                     Sincronizar Chatwoot
                   </Button>
+                ) : (
+                  <Badge variant="outline">Sincronização Chatwoot: admin</Badge>
                 )}
               </div>
             </div>

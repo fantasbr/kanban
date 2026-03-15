@@ -18,7 +18,8 @@ import {
 } from '@/components/ui/select'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import type { Deal, Priority, Stage } from '@/types/database'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import type { Deal, Priority, Stage, TipoServico, Urgencia } from '@/types/database'
 import { 
   ExternalLink, 
   Calendar, 
@@ -67,6 +68,20 @@ const priorityOptions: { value: Priority; label: string; color: string }[] = [
   { value: 'high', label: 'Alta', color: 'bg-red-100 text-red-700' },
 ]
 
+const tipoServicoOptions: { value: TipoServico; label: string }[] = [
+  { value: 'Carro', label: 'Carro' },
+  { value: 'Moto', label: 'Moto' },
+  { value: 'PCD', label: 'PCD' },
+  { value: 'Carreta', label: 'Carreta' },
+]
+
+const urgenciaOptions: { value: Urgencia; label: string }[] = [
+  { value: 'imediata', label: 'Imediata' },
+  { value: 'semana', label: 'Semana' },
+  { value: 'mes', label: 'Mês' },
+  { value: 'sem_pressa', label: 'Sem pressa' },
+]
+
 export function DealEditModal({ deal, stages, open, onClose, onSave }: DealEditModalProps) {
   const { chatwootUrl } = useChatwootUrl()
   const { items: dealItems, isLoading: itemsLoading, updateItem, deleteItem, createItems } = useDealItems(deal?.id)
@@ -75,6 +90,15 @@ export function DealEditModal({ deal, stages, open, onClose, onSave }: DealEditM
   
   const [priority, setPriority] = useState<Priority>('medium')
   const [notes, setNotes] = useState('')
+  const [activeTab, setActiveTab] = useState<'negociacao' | 'qualificacao'>('negociacao')
+  const [decisorImediato, setDecisorImediato] = useState('')
+  const [tipoServico, setTipoServico] = useState<TipoServico | null>(null)
+  const [localServico, setLocalServico] = useState('')
+  const [experienciaPrevia, setExperienciaPrevia] = useState('')
+  const [urgencia, setUrgencia] = useState<Urgencia | null>(null)
+  const [formaPagamento, setFormaPagamento] = useState('')
+  const [pontoDecisao, setPontoDecisao] = useState('')
+  const [objecaoPrincipal, setObjecaoPrincipal] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
   const [editingItem, setEditingItem] = useState<number | null>(null)
@@ -92,7 +116,16 @@ export function DealEditModal({ deal, stages, open, onClose, onSave }: DealEditM
     if (deal) {
       setPriority(deal.priority)
       setNotes(deal.notes || '')
+      setDecisorImediato(deal.decisor_imediato || '')
+      setTipoServico(deal.tipo_servico || null)
+      setLocalServico(deal.local_servico || '')
+      setExperienciaPrevia(deal.experiencia_previa || '')
+      setUrgencia(deal.urgencia || null)
+      setFormaPagamento(deal.forma_pagamento || '')
+      setPontoDecisao(deal.ponto_decisao || '')
+      setObjecaoPrincipal(deal.objecao_principal || '')
       setSelectedTemplateId(deal.contract_template_id)
+      setActiveTab('negociacao')
     }
   }, [deal])
 
@@ -159,6 +192,14 @@ export function DealEditModal({ deal, stages, open, onClose, onSave }: DealEditM
       deal_value_negotiated: calculatedTotal,
       priority,
       notes: notes || null,
+      decisor_imediato: decisorImediato.trim() || null,
+      tipo_servico: tipoServico,
+      local_servico: localServico.trim() || null,
+      experiencia_previa: experienciaPrevia.trim() || null,
+      urgencia,
+      forma_pagamento: formaPagamento.trim() || null,
+      ponto_decisao: pontoDecisao.trim() || null,
+      objecao_principal: objecaoPrincipal.trim() || null,
       contract_template_id: selectedTemplateId,
     })
     onClose()
@@ -322,7 +363,7 @@ export function DealEditModal({ deal, stages, open, onClose, onSave }: DealEditM
                   {/* Chatwoot Link */}
                   {deal.contacts.chatwoot_id && chatwootUrl && (
                     <a
-                      href={`${chatwootUrl}/app/accounts/1/conversations/${deal.chatwoot_conversation_id || deal.contacts.chatwoot_id}`}
+                      href={`${chatwootUrl}/app/accounts/1/contacts/${deal.contacts.chatwoot_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 mt-3 font-medium"
@@ -404,8 +445,20 @@ export function DealEditModal({ deal, stages, open, onClose, onSave }: DealEditM
 
           {/* Right Panel - Items & Edit (60%) */}
           <div className="w-[60%] flex flex-col min-h-0">
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as 'negociacao' | 'qualificacao')}
+              className="flex flex-1 min-h-0 flex-col"
+            >
+              <div className="border-b border-slate-200 px-4 pt-4">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="negociacao">Negociação</TabsTrigger>
+                  <TabsTrigger value="qualificacao">Qualificação do Lead</TabsTrigger>
+                </TabsList>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4">
+                <TabsContent value="negociacao" className="space-y-4 mt-0">
               {/* Template Selector */}
               <div className="space-y-2">
                 <Label htmlFor="template-select" className="text-sm font-medium text-slate-700">
@@ -733,7 +786,129 @@ export function DealEditModal({ deal, stages, open, onClose, onSave }: DealEditM
                   </p>
                 </div>
               </div>
-            </div>
+            </TabsContent>
+
+                <TabsContent value="qualificacao" className="mt-0">
+                  <Card className="p-4">
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="font-semibold text-slate-900">Qualificação do Lead</h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Registre os principais dados para qualificação e avanço da negociação.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="decisor_imediato">Decisor imediato</Label>
+                          <Input
+                            id="decisor_imediato"
+                            value={decisorImediato}
+                            onChange={(e) => setDecisorImediato(e.target.value)}
+                            placeholder="Ex.: Pai, mãe, próprio aluno"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="tipo_servico">Tipo de serviço</Label>
+                          <Select
+                            value={tipoServico ?? 'none'}
+                            onValueChange={(value) =>
+                              setTipoServico(value === 'none' ? null : (value as TipoServico))
+                            }
+                          >
+                            <SelectTrigger id="tipo_servico">
+                              <SelectValue placeholder="Selecione o tipo de serviço" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Não informado</SelectItem>
+                              {tipoServicoOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="local_servico">Local do serviço</Label>
+                          <Input
+                            id="local_servico"
+                            value={localServico}
+                            onChange={(e) => setLocalServico(e.target.value)}
+                            placeholder="Ex.: Unidade Centro"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="experiencia_previa">Experiência prévia</Label>
+                          <Input
+                            id="experiencia_previa"
+                            value={experienciaPrevia}
+                            onChange={(e) => setExperienciaPrevia(e.target.value)}
+                            placeholder="Ex.: Já dirigiu, primeira habilitação"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="urgencia">Urgência</Label>
+                          <Select
+                            value={urgencia ?? 'none'}
+                            onValueChange={(value) =>
+                              setUrgencia(value === 'none' ? null : (value as Urgencia))
+                            }
+                          >
+                            <SelectTrigger id="urgencia">
+                              <SelectValue placeholder="Selecione a urgência" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Não informado</SelectItem>
+                              {urgenciaOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="forma_pagamento">Forma de pagamento</Label>
+                          <Input
+                            id="forma_pagamento"
+                            value={formaPagamento}
+                            onChange={(e) => setFormaPagamento(e.target.value)}
+                            placeholder="Ex.: À vista, cartão, parcelado"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="ponto_decisao">Ponto de decisão</Label>
+                          <Input
+                            id="ponto_decisao"
+                            value={pontoDecisao}
+                            onChange={(e) => setPontoDecisao(e.target.value)}
+                            placeholder="Ex.: Preço, prazo, indicação"
+                          />
+                        </div>
+
+                        <div className="space-y-2 md:col-span-2">
+                          <Label htmlFor="objecao_principal">Objeção principal</Label>
+                          <Textarea
+                            id="objecao_principal"
+                            value={objecaoPrincipal}
+                            onChange={(e) => setObjecaoPrincipal(e.target.value)}
+                            placeholder="Descreva a principal objeção do lead"
+                            className="min-h-[110px] resize-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </TabsContent>
+              </div>
+            </Tabs>
 
             {/* Fixed Footer Actions */}
             <div className="border-t border-slate-200 p-4 bg-white shrink-0">

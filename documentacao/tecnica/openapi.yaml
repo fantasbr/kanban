@@ -1,46 +1,25 @@
 openapi: 3.0.3
 info:
   title: Kanban CRM/ERP API
-  version: 1.0.0
+  version: 1.2.0
   description: |
-    API REST para integração com sistema Kanban (CRM + ERP).
+    Especificacao atualizada em 14/03/2026 a partir do codigo das Edge Functions.
 
-    ## Autenticação
+    API externa (com API key):
+    - /api-crm/*
+    - /api-erp/*
 
-    Todas as requisições devem incluir uma API Key no header `Authorization`:
-    ```
-    Authorization: Bearer sk_live_your_api_key_here
-    ```
+    Funcoes auxiliares internas:
+    - /sync-chatwoot-contact
+    - /webhook-processor
 
-    ## Permissões
+    Autorizacao interna (Sprint 0):
+    - sync-chatwoot-contact: x-internal-token OU JWT admin
+    - webhook-processor: x-internal-token
 
-    As API Keys podem ter as seguintes permissões:
-    - `crm:read` - Leitura de dados CRM (deals, contacts, pipelines)
-    - `crm:write` - Escrita de dados CRM
-    - `erp:read` - Leitura de dados ERP (clients, contracts, receivables)
-    - `erp:write` - Escrita de dados ERP
-    - `*` - Acesso total (wildcard)
-
-    ## Rate Limiting
-
-    Atualmente não há rate limiting implementado.
-
-    ## Webhooks
-
-    O sistema suporta webhooks para os seguintes eventos:
-    - `deal.created` - Disparado quando um deal é criado
-    - `contract.signed` - Disparado quando um contrato é assinado (status = active)
-    - `payment.received` - Disparado quando um pagamento é recebido (receivable status = paid)
-
-    Webhooks incluem assinatura HMAC-SHA256 no header `X-Webhook-Signature`.
-
-  contact:
-    name: API Support
-    email: support@example.com
-
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
+    Convencoes de erro relevantes:
+    - Recurso nao encontrado: 404
+    - Metodo nao suportado em rota valida: 405
 
 servers:
   - url: https://your-project.supabase.co/functions/v1
@@ -53,17 +32,19 @@ security:
 
 tags:
   - name: CRM - Deals
-    description: Gerenciamento de negociações (deals)
+    description: Operacoes de deals
   - name: CRM - Contacts
-    description: Gerenciamento de contatos
+    description: Operacoes de contatos
   - name: CRM - Pipelines
-    description: Gerenciamento de funis de vendas
+    description: Operacoes de pipelines
   - name: ERP - Clients
-    description: Gerenciamento de clientes
+    description: Operacoes de clientes
   - name: ERP - Contracts
-    description: Gerenciamento de contratos
+    description: Operacoes de contratos
   - name: ERP - Receivables
-    description: Gerenciamento de contas a receber
+    description: Operacoes de contas a receber
+  - name: Internal
+    description: Funcoes auxiliares internas
 
 components:
   securitySchemes:
@@ -71,18 +52,31 @@ components:
       type: http
       scheme: bearer
       bearerFormat: API Key
-      description: |
-        API Key gerada no sistema. Formato: `sk_live_...`
-
-        Exemplo:
-        ```
-        Authorization: Bearer sk_live_0123456789abcdef...
-        ```
+      description: 'API key no formato `Authorization: Bearer sk_live_...`'
+    SupabaseUserAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT de usuario autenticado no Supabase (admin para rotas internas administrativas).
+    InternalTokenAuth:
+      type: apiKey
+      in: header
+      name: x-internal-token
+      description: Token interno configurado na variavel `INTERNAL_FUNCTION_TOKEN`.
 
   schemas:
-    # ============================================
-    # CRM SCHEMAS
-    # ============================================
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: Unauthorized
+
+    GenericObject:
+      type: object
+      additionalProperties: true
 
     Deal:
       type: object
@@ -90,149 +84,56 @@ components:
         id:
           type: string
           format: uuid
-          example: "550e8400-e29b-41d4-a716-446655440000"
         pipeline_id:
           type: string
           format: uuid
-          example: "660e8400-e29b-41d4-a716-446655440000"
         stage_id:
           type: string
           format: uuid
-          example: "770e8400-e29b-41d4-a716-446655440000"
         contact_id:
           type: integer
           nullable: true
-          example: 123
-        title:
-          type: string
-          example: "Venda de Notebook Dell"
         deal_value_negotiated:
           type: number
-          format: float
-          example: 5000.00
         priority:
           type: string
-          enum: [low, medium, high]
-          example: "high"
-        chatwoot_conversation_id:
-          type: string
-          nullable: true
-          example: "12345"
-        ai_summary:
-          type: string
-          nullable: true
-        needs_contract:
-          type: boolean
-          example: true
-        existing_client_id:
-          type: integer
-          nullable: true
         is_archived:
           type: boolean
-          example: false
-        archived_at:
-          type: string
-          format: date-time
-          nullable: true
-        archived_reason:
-          type: string
-          nullable: true
-        contract_id:
-          type: integer
-          nullable: true
         created_at:
           type: string
           format: date-time
-          example: "2024-12-23T14:00:00Z"
         updated_at:
           type: string
           format: date-time
-          example: "2024-12-23T15:00:00Z"
         contacts:
-          $ref: "#/components/schemas/Contact"
+          $ref: '#/components/schemas/GenericObject'
         crm_stages:
-          $ref: "#/components/schemas/Stage"
-
-    DealCreate:
-      type: object
-      required:
-        - pipeline_id
-        - stage_id
-        - title
-        - deal_value_negotiated
-        - priority
-      properties:
-        pipeline_id:
-          type: string
-          format: uuid
-        stage_id:
-          type: string
-          format: uuid
-        contact_id:
-          type: integer
-          nullable: true
-        title:
-          type: string
-        deal_value_negotiated:
-          type: number
-          format: float
-        priority:
-          type: string
-          enum: [low, medium, high]
-        chatwoot_conversation_id:
-          type: string
-          nullable: true
-        needs_contract:
-          type: boolean
-          default: false
+          $ref: '#/components/schemas/GenericObject'
+      additionalProperties: true
 
     Contact:
       type: object
       properties:
         id:
           type: integer
-          example: 123
         chatwoot_id:
           type: integer
-          example: 456
+          nullable: true
         name:
           type: string
-          example: "João Silva"
         phone:
           type: string
           nullable: true
-          example: "11999999999"
         email:
           type: string
           nullable: true
-          example: "joao@example.com"
         profile_url:
           type: string
           nullable: true
         created_at:
           type: string
           format: date-time
-
-    ContactCreate:
-      type: object
-      required:
-        - chatwoot_id
-        - name
-      properties:
-        chatwoot_id:
-          type: integer
-          description: "Use -1 para contatos 'balcão' (sem Chatwoot)"
-        name:
-          type: string
-        phone:
-          type: string
-          nullable: true
-        email:
-          type: string
-          nullable: true
-        profile_url:
-          type: string
-          nullable: true
+      additionalProperties: true
 
     Pipeline:
       type: object
@@ -242,125 +143,44 @@ components:
           format: uuid
         name:
           type: string
-          example: "Vendas Corporativas"
         chatwoot_inbox_id:
           type: string
-          example: "123"
         created_at:
           type: string
           format: date-time
-
-    Stage:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        pipeline_id:
-          type: string
-          format: uuid
-        name:
-          type: string
-          example: "Negociação"
-        position:
-          type: integer
-          example: 2
-        is_default:
-          type: boolean
-          example: false
-        is_won:
-          type: boolean
-          example: false
-          description: "Marca estágio como 'ganho' para métricas"
-        created_at:
-          type: string
-          format: date-time
-
-    # ============================================
-    # ERP SCHEMAS
-    # ============================================
+      additionalProperties: true
 
     Client:
       type: object
       properties:
         id:
           type: integer
-          example: 1
         contact_id:
           type: integer
           nullable: true
         full_name:
           type: string
-          example: "Maria Santos"
         cpf:
           type: string
-          example: "12345678900"
-        rg_number:
-          type: string
-          nullable: true
-        phone:
-          type: string
-          nullable: true
-          example: "11988888888"
-        email:
-          type: string
-          nullable: true
-          example: "maria@example.com"
-        address:
-          type: string
-          nullable: true
-        city:
-          type: string
-          nullable: true
-        state:
-          type: string
-          nullable: true
         source:
           type: string
-          enum: [crm, balcao]
-          example: "crm"
         is_active:
           type: boolean
-          example: true
         created_at:
           type: string
           format: date-time
+        updated_at:
+          type: string
+          format: date-time
         contacts:
-          $ref: "#/components/schemas/Contact"
-
-    ClientCreate:
-      type: object
-      required:
-        - full_name
-        - cpf
-        - source
-      properties:
-        contact_id:
-          type: integer
-          nullable: true
-        full_name:
-          type: string
-        cpf:
-          type: string
-        phone:
-          type: string
-          nullable: true
-        email:
-          type: string
-          nullable: true
-        address:
-          type: string
-          nullable: true
-        source:
-          type: string
-          enum: [crm, balcao]
+          $ref: '#/components/schemas/GenericObject'
+      additionalProperties: true
 
     Contract:
       type: object
       properties:
         id:
           type: integer
-          example: 1
         company_id:
           type: integer
         client_id:
@@ -369,175 +189,86 @@ components:
           type: integer
         contract_number:
           type: string
-          example: "CONT-2024-001"
-        total_value:
-          type: number
-          format: float
-          example: 10000.00
-        discount:
-          type: number
-          format: float
-          example: 500.00
-        final_value:
-          type: number
-          format: float
-          example: 9500.00
-        installments:
-          type: integer
-          example: 10
-        payment_method_id:
-          type: integer
-        start_date:
-          type: string
-          format: date
-        end_date:
-          type: string
-          format: date
-          nullable: true
         status:
           type: string
-          enum: [draft, active, completed, cancelled]
-          example: "active"
-        pdf_url:
-          type: string
-          nullable: true
+        total_value:
+          type: number
+        final_value:
+          type: number
         created_at:
           type: string
           format: date-time
+        updated_at:
+          type: string
+          format: date-time
         clients:
-          type: object
-          properties:
-            id:
-              type: integer
-            full_name:
-              type: string
-            cpf:
-              type: string
+          $ref: '#/components/schemas/GenericObject'
         companies:
-          type: object
+          $ref: '#/components/schemas/GenericObject'
+        contract_types:
+          $ref: '#/components/schemas/GenericObject'
+      additionalProperties: true
 
     Receivable:
       type: object
       properties:
         id:
           type: integer
-          example: 1
         contract_id:
-          type: integer
-        company_id:
           type: integer
         client_id:
           type: integer
         installment_number:
           type: integer
-          example: 1
         due_date:
           type: string
           format: date
-          example: "2024-12-31"
         amount:
           type: number
-          format: float
-          example: 1000.00
         status:
           type: string
-          enum: [pending, paid, overdue, cancelled]
-          example: "pending"
         paid_date:
           type: string
           format: date
           nullable: true
-        paid_amount:
-          type: number
-          format: float
-          nullable: true
-        payment_method_id:
-          type: integer
-          nullable: true
-        receipt_id:
-          type: integer
-          nullable: true
         created_at:
           type: string
           format: date-time
+        updated_at:
+          type: string
+          format: date-time
         clients:
-          type: object
-          properties:
-            id:
-              type: integer
-            full_name:
-              type: string
+          $ref: '#/components/schemas/GenericObject'
         contracts:
-          type: object
-          properties:
-            contract_number:
-              type: string
-
-    # ============================================
-    # RESPONSE SCHEMAS
-    # ============================================
-
-    SuccessResponse:
-      type: object
-      properties:
-        data:
-          type: object
-        message:
-          type: string
-          example: "Operation successful"
-
-    ListResponse:
-      type: object
-      properties:
-        data:
-          type: array
-          items:
-            type: object
-        total:
-          type: integer
-          example: 10
-
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          type: string
-          example: "Unauthorized"
+          $ref: '#/components/schemas/GenericObject'
+      additionalProperties: true
 
 paths:
-  # ============================================
-  # CRM - DEALS
-  # ============================================
-
   /api-crm/deals:
     get:
       tags:
         - CRM - Deals
       summary: Listar deals
-      description: Retorna lista de deals (negociações) não arquivados
+      description: Retorna deals nao arquivados (`is_archived = false`).
       operationId: listDeals
       parameters:
         - name: pipeline_id
           in: query
-          description: Filtrar por pipeline
           schema:
             type: string
             format: uuid
         - name: limit
           in: query
-          description: Número máximo de resultados
           schema:
             type: integer
             default: 100
-            maximum: 1000
         - name: offset
           in: query
-          description: Offset para paginação
           schema:
             type: integer
             default: 0
       responses:
-        "200":
+        '200':
           description: Lista de deals
           content:
             application/json:
@@ -547,71 +278,74 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/Deal"
+                      $ref: '#/components/schemas/Deal'
                   total:
                     type: integer
-              examples:
-                success:
-                  value:
-                    data:
-                      - id: "550e8400-e29b-41d4-a716-446655440000"
-                        pipeline_id: "660e8400-e29b-41d4-a716-446655440000"
-                        stage_id: "770e8400-e29b-41d4-a716-446655440000"
-                        title: "Venda Notebook"
-                        deal_value_negotiated: 5000.00
-                        priority: "high"
-                        created_at: "2024-12-23T14:00:00Z"
-                    total: 1
-        "401":
-          description: Não autorizado
+                    description: Quantidade retornada na pagina atual
+        '401':
+          description: API key ausente/invalida
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Sem permissão (requer crm:read)
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`crm:read`)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
     post:
       tags:
         - CRM - Deals
       summary: Criar deal
-      description: Cria um novo deal (negociação)
+      description: |
+        Cria um deal em `crm_deals` com o payload recebido.
+        O backend nao aplica validacao de schema alem das constraints do banco.
       operationId: createDeal
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/DealCreate"
-            examples:
-              example1:
-                value:
-                  pipeline_id: "660e8400-e29b-41d4-a716-446655440000"
-                  stage_id: "770e8400-e29b-41d4-a716-446655440000"
-                  title: "Venda de Notebook Dell"
-                  deal_value_negotiated: 5000.00
-                  priority: "high"
-                  contact_id: 123
+              $ref: '#/components/schemas/GenericObject'
       responses:
-        "201":
-          description: Deal criado com sucesso
+        '200':
+          description: Deal criado
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Deal"
+                    $ref: '#/components/schemas/Deal'
                   message:
                     type: string
-        "401":
-          description: Não autorizado
-        "403":
-          description: Sem permissão (requer crm:write)
+                    example: Deal created successfully
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`crm:write`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-crm/deals/{id}:
     get:
@@ -627,7 +361,7 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Deal encontrado
           content:
             application/json:
@@ -635,9 +369,31 @@ paths:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Deal"
-        "404":
-          description: Deal não encontrado
+                    $ref: '#/components/schemas/Deal'
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`crm:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Recurso nao encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
     put:
       tags:
@@ -656,25 +412,9 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                deal_value_negotiated:
-                  type: number
-                priority:
-                  type: string
-                  enum: [low, medium, high]
-                stage_id:
-                  type: string
-                  format: uuid
-            examples:
-              example1:
-                value:
-                  title: "Venda Atualizada"
-                  deal_value_negotiated: 6000.00
+              $ref: '#/components/schemas/GenericObject'
       responses:
-        "200":
+        '200':
           description: Deal atualizado
           content:
             application/json:
@@ -682,15 +422,34 @@ paths:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Deal"
+                    $ref: '#/components/schemas/Deal'
                   message:
                     type: string
-        "403":
-          description: Sem permissão (requer crm:write)
-
-  # ============================================
-  # CRM - CONTACTS
-  # ============================================
+                    example: Deal updated successfully
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`crm:write`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Recurso nao encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-crm/contacts:
     get:
@@ -701,7 +460,6 @@ paths:
       parameters:
         - name: search
           in: query
-          description: Buscar por nome, telefone ou email
           schema:
             type: string
         - name: limit
@@ -715,7 +473,7 @@ paths:
             type: integer
             default: 0
       responses:
-        "200":
+        '200':
           description: Lista de contatos
           content:
             application/json:
@@ -725,9 +483,28 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/Contact"
+                      $ref: '#/components/schemas/Contact'
                   total:
                     type: integer
+                    description: Quantidade retornada na pagina atual
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`crm:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
     post:
       tags:
@@ -739,16 +516,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ContactCreate"
-            examples:
-              example1:
-                value:
-                  chatwoot_id: -1
-                  name: "João Silva"
-                  phone: "11999999999"
-                  email: "joao@example.com"
+              $ref: '#/components/schemas/GenericObject'
       responses:
-        "201":
+        '200':
           description: Contato criado
           content:
             application/json:
@@ -756,9 +526,28 @@ paths:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Contact"
+                    $ref: '#/components/schemas/Contact'
                   message:
                     type: string
+                    example: Contact created successfully
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`crm:write`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-crm/contacts/{id}:
     get:
@@ -773,7 +562,7 @@ paths:
           schema:
             type: integer
       responses:
-        "200":
+        '200':
           description: Contato encontrado
           content:
             application/json:
@@ -781,11 +570,31 @@ paths:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Contact"
-
-  # ============================================
-  # CRM - PIPELINES
-  # ============================================
+                    $ref: '#/components/schemas/Contact'
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`crm:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Recurso nao encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-crm/pipelines:
     get:
@@ -794,7 +603,7 @@ paths:
       summary: Listar pipelines
       operationId: listPipelines
       responses:
-        "200":
+        '200':
           description: Lista de pipelines
           content:
             application/json:
@@ -804,9 +613,28 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/Pipeline"
+                      $ref: '#/components/schemas/Pipeline'
                   total:
                     type: integer
+                    description: Quantidade retornada na pagina atual
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`crm:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-crm/pipelines/{id}:
     get:
@@ -822,7 +650,7 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Pipeline encontrado
           content:
             application/json:
@@ -830,22 +658,42 @@ paths:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Pipeline"
-
-  # ============================================
-  # ERP - CLIENTS
-  # ============================================
+                    $ref: '#/components/schemas/Pipeline'
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`crm:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Recurso nao encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-erp/clients:
     get:
       tags:
         - ERP - Clients
       summary: Listar clientes
+      description: Retorna apenas clientes ativos (`is_active = true`).
       operationId: listClients
       parameters:
         - name: search
           in: query
-          description: Buscar por nome ou CPF
           schema:
             type: string
         - name: limit
@@ -859,7 +707,7 @@ paths:
             type: integer
             default: 0
       responses:
-        "200":
+        '200':
           description: Lista de clientes
           content:
             application/json:
@@ -869,11 +717,28 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/Client"
+                      $ref: '#/components/schemas/Client'
                   total:
                     type: integer
-        "403":
-          description: Sem permissão (requer erp:read)
+                    description: Quantidade retornada na pagina atual
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`erp:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
     post:
       tags:
@@ -885,17 +750,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ClientCreate"
-            examples:
-              example1:
-                value:
-                  full_name: "Maria Santos"
-                  cpf: "12345678900"
-                  phone: "11988888888"
-                  email: "maria@example.com"
-                  source: "crm"
+              $ref: '#/components/schemas/GenericObject'
       responses:
-        "201":
+        '200':
           description: Cliente criado
           content:
             application/json:
@@ -903,11 +760,28 @@ paths:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Client"
+                    $ref: '#/components/schemas/Client'
                   message:
                     type: string
-        "403":
-          description: Sem permissão (requer erp:write)
+                    example: Client created successfully
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`erp:write`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-erp/clients/{id}:
     get:
@@ -922,7 +796,7 @@ paths:
           schema:
             type: integer
       responses:
-        "200":
+        '200':
           description: Cliente encontrado
           content:
             application/json:
@@ -930,11 +804,31 @@ paths:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Client"
-
-  # ============================================
-  # ERP - CONTRACTS
-  # ============================================
+                    $ref: '#/components/schemas/Client'
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`erp:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Recurso nao encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-erp/contracts:
     get:
@@ -945,15 +839,12 @@ paths:
       parameters:
         - name: client_id
           in: query
-          description: Filtrar por cliente
           schema:
             type: integer
         - name: status
           in: query
-          description: Filtrar por status
           schema:
             type: string
-            enum: [draft, active, completed, cancelled]
         - name: limit
           in: query
           schema:
@@ -965,7 +856,7 @@ paths:
             type: integer
             default: 0
       responses:
-        "200":
+        '200':
           description: Lista de contratos
           content:
             application/json:
@@ -975,9 +866,28 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/Contract"
+                      $ref: '#/components/schemas/Contract'
                   total:
                     type: integer
+                    description: Quantidade retornada na pagina atual
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`erp:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-erp/contracts/{id}:
     get:
@@ -992,7 +902,7 @@ paths:
           schema:
             type: integer
       responses:
-        "200":
+        '200':
           description: Contrato encontrado
           content:
             application/json:
@@ -1000,11 +910,31 @@ paths:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Contract"
-
-  # ============================================
-  # ERP - RECEIVABLES
-  # ============================================
+                    $ref: '#/components/schemas/Contract'
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`erp:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Recurso nao encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-erp/receivables:
     get:
@@ -1015,18 +945,14 @@ paths:
       parameters:
         - name: status
           in: query
-          description: Filtrar por status
           schema:
             type: string
-            enum: [pending, paid, overdue, cancelled]
         - name: client_id
           in: query
-          description: Filtrar por cliente
           schema:
             type: integer
         - name: contract_id
           in: query
-          description: Filtrar por contrato
           schema:
             type: integer
         - name: limit
@@ -1040,8 +966,8 @@ paths:
             type: integer
             default: 0
       responses:
-        "200":
-          description: Lista de contas a receber
+        '200':
+          description: Lista de parcelas
           content:
             application/json:
               schema:
@@ -1050,9 +976,28 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/Receivable"
+                      $ref: '#/components/schemas/Receivable'
                   total:
                     type: integer
+                    description: Quantidade retornada na pagina atual
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`erp:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api-erp/receivables/{id}:
     get:
@@ -1067,12 +1012,167 @@ paths:
           schema:
             type: integer
       responses:
-        "200":
-          description: Conta a receber encontrada
+        '200':
+          description: Parcela encontrada
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Receivable"
+                    $ref: '#/components/schemas/Receivable'
+        '401':
+          description: API key ausente/invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissao (`erp:read`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Recurso nao encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /sync-chatwoot-contact:
+    post:
+      tags:
+        - Internal
+      summary: Sincronizar contato com Chatwoot
+      description: |
+        Sincroniza um contato de `crm_contacts` com Chatwoot e salva `chatwoot_id`.
+        Esta funcao nao usa API key de integracao (`sk_live_...`).
+        Requer `x-internal-token` ou JWT de usuario admin.
+      operationId: syncChatwootContact
+      security:
+        - InternalTokenAuth: []
+        - SupabaseUserAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - contact_id
+              properties:
+                contact_id:
+                  type: integer
+      responses:
+        '200':
+          description: Contato sincronizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  chatwoot_id:
+                    type: integer
+                  message:
+                    type: string
+                    example: Contact synced successfully
+        '400':
+          description: Erro de validacao/integracao
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+        '401':
+          description: Nao autenticado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: Unauthorized
+        '403':
+          description: Usuario autenticado sem privilegio admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: Forbidden: admin required
+        '404':
+          description: Contato nao encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: Contact not found
+
+  /webhook-processor:
+    post:
+      tags:
+        - Internal
+      summary: Processar fila de webhooks
+      description: |
+        Processa ate 10 eventos pendentes da tabela `webhook_queue`.
+        Requer `x-internal-token`.
+      operationId: processWebhookQueue
+      security:
+        - InternalTokenAuth: []
+      responses:
+        '200':
+          description: Fila processada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processed:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '401':
+          description: Token interno ausente/invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
